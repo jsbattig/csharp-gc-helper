@@ -75,6 +75,32 @@ namespace gc_helper_tests
     }
 
     [Test]
+    public void SimpleDependencyDisposeByRemovingDependency_Success()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new[] { obj.Handle });
+      obj.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj2.Handle, obj.Handle);
+      Assert.IsTrue(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      obj2.Dispose();
+      Assert.IsTrue(obj2.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+      Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+    }
+
+    [Test]
+    [ExpectedException(typeof(EDependencyNotFound<IntPtr>))]
+    public void RemoveNotExistingDependency_Fails()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new[] { obj.Handle });
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj2.Handle);
+    }
+
+    [Test]
     [ExpectedException(typeof(EObjectNotFound<IntPtr>))]
     public void NonExistingDependency_Fails()
     {
@@ -222,7 +248,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void CircularDependenciesDisposeAll_Success()
+    public void CircularDependenciesDisposeAllRemoveOneDependency_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
@@ -234,6 +260,11 @@ namespace gc_helper_tests
       obj.Dispose();
       obj2.Dispose();
       obj3.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      /* Only way to get objects destroyed is by removing one dependency to destroy the circle */
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj3.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -243,7 +274,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void MultiCircularDependenciesDisposeAll_Success()
+    public void MultiCircularDependenciesDisposeAllRemoveDependencies_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
@@ -263,12 +294,63 @@ namespace gc_helper_tests
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj3.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj3.Handle);
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj2.Handle);
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj2.Handle, obj3.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
       Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
       Assert.AreEqual(obj3.Handle, obj3.destroyedHandle);
+    }
+
+    [Test]
+    public void ComplexHierachyThreadedStressTest_Success()
+    {
+      const int countThreads = 20;
+      const int countObjects = 1000;
+      var objsArray = new TesterClass[countThreads, countObjects];
+      for (var i = 0; i < countThreads; i++)
+        for(var j = 0; j < countObjects; j++)
+          objsArray[i, j] = new TesterClass(new IntPtr[] { });
+      for (var i = 1; i < countThreads; i++)
+        for (var j = 1; j < countObjects; j++)
+        {
+          TesterClass.UnmanagedObjectLifecycle.AddDependency(objsArray[i - 1, j].Handle, objsArray[i, j].Handle);
+          TesterClass.UnmanagedObjectLifecycle.AddDependency(objsArray[i, j].Handle, objsArray[i - 1, j - 1].Handle);
+        }
+      var threads = new Thread[countThreads];
+      for (var threadNo = 0; threadNo < countThreads; threadNo++)
+      {
+        var no = threadNo;
+        threads[no] = new Thread(() =>
+        {
+          for (var i = 0; i < countObjects; i++)
+          {
+            objsArray[no, i].Dispose();
+            Thread.Sleep(5);
+          }
+        });
+      }
+      foreach (var t in threads)
+        t.Start();
+      foreach (var t in threads)
+        t.Join();
+      foreach (var o in objsArray)
+      {
+        Assert.IsTrue(o.destroyed);
+        Assert.AreEqual(o.destroyedHandle, o.Handle);
+      }
     }
   }
 }

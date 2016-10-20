@@ -10,13 +10,14 @@ namespace JSB.GChelpers
 
     public void Add(THandleType dep)
     {
-      _container.TryAdd(dep, 0);
+      if(!_container.TryAdd(dep, 0))
+        throw new EObjectDependencyAlreadyExists<THandleType>(dep);
     }
 
-    public void Remove(THandleType dep)
+    public bool Remove(THandleType dep)
     {
       int dummy;
-      _container.TryRemove(dep, out dummy);
+      return _container.TryRemove(dep, out dummy);
     }
 
     public bool Find(THandleType dep)

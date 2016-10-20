@@ -6,11 +6,10 @@ namespace JSB.GChelpers
   {
     public delegate void DestroyOrFreeUnmanagedObjectDelegate(THandleType obj);
 
+    private int _refCount = 1;
     public THandleType Obj { get; set; }
     public DestroyOrFreeUnmanagedObjectDelegate DestroyObj { get; set; }
     public DestroyOrFreeUnmanagedObjectDelegate FreeObject { get; set; }
-    private int _refCount = 1;
-
     public ConcurrentDependencies<THandleType> Dependencies { get; set; }
 
     private void DestroyAndFree(THandleType obj)

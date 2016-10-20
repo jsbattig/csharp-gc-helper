@@ -14,6 +14,11 @@ namespace JSB.GChelpers
     public EObjectNotFound(THandleType obj) : base(string.Format("Object not found ({0})", obj)) { }
   }
 
+  public class EDependencyObjectNotFound<THandleType> : EObjectNotFound<THandleType>
+  {
+    public EDependencyObjectNotFound(THandleType obj) : base(obj) { }
+  }
+
   public class EDependencyNotFound<THandleType> : EDisposeHelper
   {
     public EDependencyNotFound(THandleType obj) : base(string.Format("Dependency not found ({0})", obj)) { }
@@ -22,5 +27,10 @@ namespace JSB.GChelpers
   public class EObjectAlreadyExists<THandleType> : EDisposeHelper
   {
     public EObjectAlreadyExists(THandleType obj) : base(string.Format("Object already exists ({0})", obj)) { }
+  }
+
+  public class EObjectDependencyAlreadyExists<THandleType> : EDisposeHelper
+  {
+    public EObjectDependencyAlreadyExists(THandleType obj) : base(string.Format("Dependency already exists ({0})", obj)) { }
   }
 }

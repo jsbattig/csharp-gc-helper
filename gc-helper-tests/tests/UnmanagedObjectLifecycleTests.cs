@@ -48,7 +48,7 @@ namespace gc_helper_tests
     }
   }
 
-  public class GCHelperTests
+  public class UnamangedObjectLifecycleTests
   {
     [Test]
     public void BasicTest()

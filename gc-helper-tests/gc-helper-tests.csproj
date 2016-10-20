@@ -44,16 +44,16 @@
     <Compile Include="..\src\ConcurrentDeps.cs">
       <Link>src\ConcurrentDeps.cs</Link>
     </Compile>
-    <Compile Include="..\src\gc-helper.cs">
-      <Link>src\gc-helper.cs</Link>
+    <Compile Include="..\src\UnmanagedObjectContext.cs">
+      <Link>src\UnmanagedObjectContext.cs</Link>
     </Compile>
-    <Compile Include="..\src\gc-helperExceptions.cs">
-      <Link>src\gc-helperExceptions.cs</Link>
+    <Compile Include="..\src\UnmanagedObjectLifecycle.cs">
+      <Link>src\UnmanagedObjectLifecycle.cs</Link>
     </Compile>
-    <Compile Include="..\src\UnManagedObjectContext.cs">
-      <Link>src\UnManagedObjectContext.cs</Link>
+    <Compile Include="..\src\UnmanagedObjectLifecycleExceptions.cs">
+      <Link>src\UnmanagedObjectLifecycleExceptions.cs</Link>
     </Compile>
-    <Compile Include="tests\GC-Helper-Tests.cs" />
+    <Compile Include="tests\UnmanagedObjectLifecycleTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />

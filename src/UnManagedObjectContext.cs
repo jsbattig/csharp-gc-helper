@@ -1,32 +1,19 @@
-using System;
-using System.Collections.Generic;
 using System.Threading;
 
 namespace JSB.GChelpers
 {
-  public class UnmanagedObjectContext
+  public class UnmanagedObjectContext<THandleType>
   {
-    public delegate void DestroyOrFreeUnmanagedObjectDelegate(IntPtr obj);
+    public delegate void DestroyOrFreeUnmanagedObjectDelegate(THandleType obj);
 
-    public IntPtr Obj { get; set; }
+    public THandleType Obj { get; set; }
     public DestroyOrFreeUnmanagedObjectDelegate DestroyObj { get; set; }
     public DestroyOrFreeUnmanagedObjectDelegate FreeObject { get; set; }
-    private int _refCount;
+    private int _refCount = 1;
 
-    public int RefCount
-    {
-      get
-      {
-        return _refCount;
-      }
-      set
-      {
-        _refCount = value;
-      }
-    }
-    public List<IntPtr> Dependencies { get; set; }
+    public ConcurrentDependencies<THandleType> Dependencies { get; set; }
 
-    private void DestroyAndFree(IntPtr obj)
+    private void DestroyAndFree(THandleType obj)
     {
       DestroyObj?.Invoke(obj);
       FreeObject?.Invoke(obj);
@@ -39,9 +26,11 @@ namespace JSB.GChelpers
 
     public bool ReleaseRefCount()
     {
+      // This can go to -1 when object was detroyed while destroying a dependent object
       if (Interlocked.Decrement(ref _refCount) > 0)
         return false;
-      DestroyAndFree(Obj);
+      if(_refCount == 0)
+        DestroyAndFree(Obj);
       return true;
     }
   }

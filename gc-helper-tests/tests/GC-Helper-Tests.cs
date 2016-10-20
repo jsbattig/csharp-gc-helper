@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using NUnit.Framework;
 using JSB.GChelpers;
 
@@ -7,6 +8,7 @@ namespace gc_helper_tests
 {
   public class TesterClass : IDisposable
   {
+    private static readonly UnmanagedObjectLifecycle<IntPtr> _unmanagedObjectLifecycle = new UnmanagedObjectLifecycle<IntPtr>();
     public bool destroyed;
     public IntPtr destroyedHandle;
     private static IntPtr _nextHandle = IntPtr.Zero;
@@ -18,13 +20,16 @@ namespace gc_helper_tests
       destroyedHandle = obj;
     }
 
-    public TesterClass(IntPtr dep)
+    public TesterClass(IntPtr[] deps)
     {
       _nextHandle = IntPtr.Add(_nextHandle, 1);
       Handle = _nextHandle;
-      List<IntPtr> deps;
-      deps = dep != IntPtr.Zero ? new List<IntPtr> {dep} : null;
-      DisposeHelper.Register(Handle, DestroyObject, null, deps);
+      var _deps = new ConcurrentDependencies<IntPtr>();
+      foreach (var dep in deps)
+      {
+        _deps.Add(dep);
+      }
+      _unmanagedObjectLifecycle.Register(Handle, DestroyObject, null, _deps);
     }
 
     ~TesterClass()
@@ -34,7 +39,7 @@ namespace gc_helper_tests
 
     public void Dispose(bool disposing)
     {
-      DisposeHelper.Unregister(Handle);
+      _unmanagedObjectLifecycle.Unregister(Handle, disposing);
     }
 
     public void Dispose()
@@ -48,7 +53,7 @@ namespace gc_helper_tests
     [Test]
     public void BasicTest()
     {
-      var obj = new TesterClass(IntPtr.Zero);
+      var obj = new TesterClass(new IntPtr[] {});
       Assert.IsFalse(obj.destroyed);
       obj.Dispose();
       Assert.IsTrue(obj.destroyed);
@@ -56,17 +61,110 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void SimpleDependency()
+    public void SimpleDependencyDisposeLeafLast()
     {
-      var obj = new TesterClass(IntPtr.Zero);
-      var obj2 = new TesterClass(obj.Handle);
+      var obj = new TesterClass(new IntPtr[] {});
+      var obj2 = new TesterClass(new[] { obj.Handle });
       obj.Dispose();
       Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
       obj2.Dispose();
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
       Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+    }
+
+    [Test]
+    public void MutipleDependenciesDisposeLeafLast()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new IntPtr[] { });
+      var obj3 = new TesterClass(new [] { obj.Handle, obj2.Handle});
+      obj.Dispose();
+      obj2.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj3.Dispose();
+      Assert.IsTrue(obj.destroyed);
+      Assert.IsTrue(obj2.destroyed);
+      Assert.IsTrue(obj3.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+      Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+      Assert.AreEqual(obj3.Handle, obj3.destroyedHandle);
+    }
+
+    [Test]
+    public void LinearHierachyOfDependenciesDisposeLeafLast()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new [] { obj.Handle });
+      var obj3 = new TesterClass(new[] { obj2.Handle });
+      obj.Dispose();
+      obj2.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj3.Dispose();
+      Assert.IsTrue(obj.destroyed);
+      Assert.IsTrue(obj2.destroyed);
+      Assert.IsTrue(obj3.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+      Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+      Assert.AreEqual(obj3.Handle, obj3.destroyedHandle);
+    }
+
+    [Test]
+    public void ComplexHierachyOfDependenciesDisposeLeafLast()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new[] { obj.Handle });
+      var obj3 = new TesterClass(new[] { obj.Handle });
+      var obj4 = new TesterClass(new[] { obj3.Handle, obj2.Handle });
+      obj.Dispose();
+      obj2.Dispose();
+      obj3.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      Assert.IsFalse(obj4.destroyed);
+      obj4.Dispose();
+      Assert.IsTrue(obj.destroyed);
+      Assert.IsTrue(obj2.destroyed);
+      Assert.IsTrue(obj3.destroyed);
+      Assert.IsTrue(obj4.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+      Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+      Assert.AreEqual(obj3.Handle, obj3.destroyedHandle);
+      Assert.AreEqual(obj4.Handle, obj4.destroyedHandle);
+    }
+
+    [Test]
+    public void ComplexHierachyOfDependenciesEmulateGCRandomDiposalOrder()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new[] { obj.Handle });
+      var obj3 = new TesterClass(new[] { obj.Handle });
+      var obj4 = new TesterClass(new[] { obj3.Handle, obj2.Handle });
+      obj4.Dispose();
+      Assert.IsTrue(obj4.destroyed);
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj2.Dispose();
+      Assert.IsTrue(obj2.destroyed);
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj3.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsTrue(obj3.destroyed);
+      obj.Dispose();
+      Assert.IsTrue(obj.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+      Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+      Assert.AreEqual(obj3.Handle, obj3.destroyedHandle);
+      Assert.AreEqual(obj4.Handle, obj4.destroyedHandle);
     }
   }
 }

@@ -41,8 +41,14 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="..\src\ConcurrentDeps.cs">
+      <Link>src\ConcurrentDeps.cs</Link>
+    </Compile>
     <Compile Include="..\src\gc-helper.cs">
       <Link>src\gc-helper.cs</Link>
+    </Compile>
+    <Compile Include="..\src\gc-helperExceptions.cs">
+      <Link>src\gc-helperExceptions.cs</Link>
     </Compile>
     <Compile Include="..\src\UnManagedObjectContext.cs">
       <Link>src\UnManagedObjectContext.cs</Link>

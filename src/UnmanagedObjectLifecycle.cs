@@ -26,48 +26,70 @@ namespace JSB.GChelpers
     public void Register(THandleType obj, UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod,
                          UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod, ConcurrentDependencies<THandleType> dependencies)
     {
-      _trackedObjects.TryAdd(obj, new UnmanagedObjectContext<THandleType>
+      var trackedObject = new UnmanagedObjectContext<THandleType>
       {
         Obj = obj,
         DestroyObj = destroyMethod,
         FreeObject = freeMethod,
-        Dependencies = dependencies = dependencies ?? new ConcurrentDependencies<THandleType>()
-      });
-      foreach (var dep in dependencies)
+        Dependencies = dependencies ?? new ConcurrentDependencies<THandleType>()
+      };
+      foreach (var dep in trackedObject.Dependencies)
       {
         UnmanagedObjectContext<THandleType> depContext;
-        if(_trackedObjects.TryGetValue(dep, out depContext))
-          depContext.AddRefCount();
+        if(!_trackedObjects.TryGetValue(dep, out depContext))
+          throw new EObjectNotFound<THandleType>(dep);
+        depContext.AddRefCount();
+      }
+      if (!_trackedObjects.TryAdd(obj, trackedObject))
+        throw new EObjectAlreadyExists<THandleType>(obj);
+    }
+
+    /* currentlyUnregistering parameter is used to allow circular dependency relationship. When found on a recursive 
+       situation unregistering related objects in a circular relationship the code will cut control properly when reaching the
+       starting point of the recursive stack */
+    private void Unregister(THandleType obj, bool disposing, Dependencies<THandleType> currentlyUnregistering)
+    {
+      UnmanagedObjectContext<THandleType> depContext;
+      if (!_trackedObjects.TryGetValue(obj, out depContext))
+        if (disposing)
+          throw new EObjectNotFound<THandleType>(obj);
+        else return;
+      if (!depContext.ReleaseRefCount())
+        return;
+      if (!_trackedObjects.TryRemove(obj, out depContext))
+        throw new EObjectNotFound<THandleType>(obj);
+      foreach (var dep in depContext.Dependencies)
+      {
+        UnmanagedObjectContext<THandleType> depsDepContext;
+        if (!_trackedObjects.TryGetValue(dep, out depsDepContext))
+          if (disposing && !currentlyUnregistering.Find(dep))
+            throw new EDependencyNotFound<THandleType>(dep);
+          else continue;
+        if (!depsDepContext.ReleaseRefCount())
+          continue;
+        currentlyUnregistering.Add(obj);
+        try
+        {
+          Unregister(dep, disposing, currentlyUnregistering);
+        }
+        finally
+        {
+          currentlyUnregistering.Remove(obj);
+        }
       }
     }
 
     public void Unregister(THandleType obj, bool disposing)
     {
-      UnmanagedObjectContext<THandleType> depContext;
-      if (!_trackedObjects.TryGetValue(obj, out depContext))
-        if (disposing)
-          throw new EDisposeHelperObjectNotFound();
-        else return;
-      if (!depContext.ReleaseRefCount())
-        return;
-      _trackedObjects.TryRemove(obj, out depContext);
-      foreach (var dep in depContext.Dependencies)
-      {
-        UnmanagedObjectContext<THandleType> depsDepContext;
-        if (!_trackedObjects.TryGetValue(dep, out depsDepContext))
-          if (disposing)
-            throw new EDependencyNotFound();
-          else continue;
-        if (depsDepContext.ReleaseRefCount())
-          Unregister(dep, disposing);
-      }
+      var currentlyUnregistering = new Dependencies<THandleType>();
+      Unregister(obj, disposing, currentlyUnregistering);
     }
 
     public void AddDependency(THandleType obj, THandleType dep)
     {
       UnmanagedObjectContext<THandleType> depContext;
       if (!_trackedObjects.TryGetValue(obj, out depContext))
-        throw new EDisposeHelperObjectNotFound();
+        throw new EObjectNotFound<THandleType>(obj);
       depContext.Dependencies.Add(dep);
     }
 
@@ -75,7 +97,7 @@ namespace JSB.GChelpers
     {
       UnmanagedObjectContext<THandleType> depContext;
       if (!_trackedObjects.TryGetValue(obj, out depContext))
-        throw new EDisposeHelperObjectNotFound();
+        throw new EDependencyNotFound<THandleType>(obj);
       depContext.Dependencies.Remove(dep);
     }
   }

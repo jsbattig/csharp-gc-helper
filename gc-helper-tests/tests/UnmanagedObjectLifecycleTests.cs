@@ -7,7 +7,7 @@ namespace gc_helper_tests
 {
   public class TesterClass : IDisposable
   {
-    private static readonly UnmanagedObjectLifecycle<IntPtr> _unmanagedObjectLifecycle = new UnmanagedObjectLifecycle<IntPtr>();
+    public static readonly UnmanagedObjectLifecycle<IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectLifecycle<IntPtr>();
     public bool destroyed;
     public IntPtr destroyedHandle;
     private static IntPtr _nextHandle = IntPtr.Zero;
@@ -28,7 +28,7 @@ namespace gc_helper_tests
       {
         _deps.Add(dep);
       }
-      _unmanagedObjectLifecycle.Register(Handle, DestroyObject, null, _deps);
+      UnmanagedObjectLifecycle.Register(Handle, DestroyObject, null, _deps);
     }
 
     ~TesterClass()
@@ -38,7 +38,7 @@ namespace gc_helper_tests
 
     public void Dispose(bool disposing)
     {
-      _unmanagedObjectLifecycle.Unregister(Handle, disposing);
+      UnmanagedObjectLifecycle.Unregister(Handle, disposing);
     }
 
     public void Dispose()
@@ -50,7 +50,7 @@ namespace gc_helper_tests
   public class UnamangedObjectLifecycleTests
   {
     [Test]
-    public void BasicTest()
+    public void BasicTest_Success()
     {
       var obj = new TesterClass(new IntPtr[] {});
       Assert.IsFalse(obj.destroyed);
@@ -60,7 +60,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void SimpleDependencyDisposeLeafLast()
+    public void SimpleDependencyDisposeLeafLast_Success()
     {
       var obj = new TesterClass(new IntPtr[] {});
       var obj2 = new TesterClass(new[] { obj.Handle });
@@ -75,7 +75,25 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void MutipleDependenciesDisposeLeafLast()
+    [ExpectedException(typeof(EObjectNotFound<IntPtr>))]
+    public void NonExistingDependency_Fails()
+    {
+      // ReSharper disable once ObjectCreationAsStatement
+      new TesterClass(new[] { IntPtr.Zero });
+    }
+
+    [Test]
+    [ExpectedException(typeof(EObjectNotFound<IntPtr>))]
+    public void UnregisterNonExistingObject_Fails()
+    {
+      // ReSharper disable once ObjectCreationAsStatement
+      var obj = new TesterClass(new IntPtr[] {});
+      obj.Handle = IntPtr.Add(obj.Handle, 1);
+      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle, true);
+    }
+
+    [Test]
+    public void MutipleDependenciesDisposeLeafLast_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new IntPtr[] { });
@@ -95,7 +113,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void LinearHierachyOfDependenciesDisposeLeafLast()
+    public void LinearHierachyOfDependenciesDisposeLeafLast_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new [] { obj.Handle });
@@ -115,7 +133,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void ComplexHierachyOfDependenciesDisposeLeafLast()
+    public void ComplexHierachyOfDependenciesDisposeLeafLast_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
@@ -140,7 +158,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void ComplexHierachyOfDependenciesEmulateGCRandomDiposalOrder()
+    public void ComplexHierachyOfDependenciesEmulateGCRandomDisposalOrder_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
@@ -167,7 +185,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void SimpleHierachyThreadedTestPerformance()
+    public void SimpleHierachyThreadedTestPerformance_Success()
     {
       var startTicks = Environment.TickCount;
       var objs1 = new TesterClass[1000];
@@ -175,7 +193,7 @@ namespace gc_helper_tests
         objs1[i] = new TesterClass(new IntPtr[] {});
       var objs2 = new TesterClass[1000];
       for (var i = 0; i < 1000; i++)
-        objs2[i] = new TesterClass(new IntPtr[] { objs1[i].Handle });
+        objs2[i] = new TesterClass(new [] { objs1[i].Handle });
       var thread1 = new Thread(() =>
       {
         foreach (var o in objs1)
@@ -201,6 +219,56 @@ namespace gc_helper_tests
         Assert.AreEqual(o.destroyedHandle, o.Handle);
       }
       Assert.Less(Math.Abs(Environment.TickCount - startTicks), 100);
+    }
+
+    [Test]
+    public void CircularDependenciesDisposeAll_Success()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new[] { obj.Handle });
+      var obj3 = new TesterClass(new[] { obj2.Handle });
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj.Handle, obj3.Handle); // Circular dependency
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj.Dispose();
+      obj2.Dispose();
+      obj3.Dispose();
+      Assert.IsTrue(obj.destroyed);
+      Assert.IsTrue(obj2.destroyed);
+      Assert.IsTrue(obj3.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+      Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+      Assert.AreEqual(obj3.Handle, obj3.destroyedHandle);
+    }
+
+    [Test]
+    public void MultiCircularDependenciesDisposeAll_Success()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      var obj2 = new TesterClass(new[] { obj.Handle });
+      var obj3 = new TesterClass(new[] { obj2.Handle, obj.Handle });
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj.Handle, obj3.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj.Handle, obj2.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj2.Handle, obj3.Handle); // Circular dependency
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj2.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      Assert.IsFalse(obj2.destroyed);
+      Assert.IsFalse(obj3.destroyed);
+      obj3.Dispose();
+      Assert.IsTrue(obj.destroyed);
+      Assert.IsTrue(obj2.destroyed);
+      Assert.IsTrue(obj3.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+      Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
+      Assert.AreEqual(obj3.Handle, obj3.destroyedHandle);
     }
   }
 }

@@ -41,8 +41,8 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="..\src\ConcurrentDeps.cs">
-      <Link>src\ConcurrentDeps.cs</Link>
+    <Compile Include="..\src\DependencyContainers.cs">
+      <Link>src\DependencyContainers.cs</Link>
     </Compile>
     <Compile Include="..\src\UnmanagedObjectContext.cs">
       <Link>src\UnmanagedObjectContext.cs</Link>

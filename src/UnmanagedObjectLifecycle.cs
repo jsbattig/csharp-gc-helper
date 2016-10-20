@@ -26,14 +26,12 @@ namespace JSB.GChelpers
     public void Register(THandleType obj, UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod,
                          UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod, ConcurrentDependencies<THandleType> dependencies)
     {
-      if (dependencies == null)
-        dependencies = new ConcurrentDependencies<THandleType>();
       _trackedObjects.TryAdd(obj, new UnmanagedObjectContext<THandleType>
       {
         Obj = obj,
         DestroyObj = destroyMethod,
         FreeObject = freeMethod,
-        Dependencies = dependencies
+        Dependencies = dependencies = dependencies ?? new ConcurrentDependencies<THandleType>()
       });
       foreach (var dep in dependencies)
       {

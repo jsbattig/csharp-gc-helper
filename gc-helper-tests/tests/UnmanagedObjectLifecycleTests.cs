@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Threading;
 using NUnit.Framework;
-using JSB.GChelpers;
+using GChelpers;
 
 namespace gc_helper_tests
 {

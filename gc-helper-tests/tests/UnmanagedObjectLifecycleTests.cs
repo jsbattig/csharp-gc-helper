@@ -60,6 +60,20 @@ namespace gc_helper_tests
     }
 
     [Test]
+    public void RegisterObjectTwice_Success()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      Assert.IsFalse(obj.destroyed);
+      TesterClass.UnmanagedObjectLifecycle.Register(obj.Handle);
+      Assert.IsFalse(obj.destroyed);
+      obj.Dispose();
+      Assert.IsFalse(obj.destroyed);
+      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle, true);
+      Assert.IsTrue(obj.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+    }
+
+    [Test]
     public void SimpleDependencyDisposeLeafLast_Success()
     {
       var obj = new TesterClass(new IntPtr[] {});

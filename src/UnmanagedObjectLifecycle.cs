@@ -19,7 +19,6 @@
  *          you will be causing a memory leak. This is no different than with other reference counted strategies.
  */
 
-using System;
 using System.Collections.Concurrent;
 
 namespace GChelpers

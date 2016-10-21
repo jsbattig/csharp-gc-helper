@@ -2,7 +2,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 
-namespace JSB.GChelpers
+namespace GChelpers
 {
   public class ConcurrentDependencies<THandleType> : IEnumerable<THandleType>
   {

@@ -19,9 +19,10 @@
  *          you will be causing a memory leak. This is no different than with other reference counted strategies.
  */
 
+using System;
 using System.Collections.Concurrent;
 
-namespace JSB.GChelpers
+namespace GChelpers
 {
   public class UnmanagedObjectLifecycle<THandleType>
   {
@@ -29,7 +30,7 @@ namespace JSB.GChelpers
 
     public void Register(THandleType obj, 
                          UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod,
-                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod, 
+                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod,
                          ConcurrentDependencies<THandleType> dependencies)
     {
       var trackedObject = new UnmanagedObjectContext<THandleType>

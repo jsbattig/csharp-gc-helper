@@ -1,6 +1,6 @@
 using System.Threading;
 
-namespace JSB.GChelpers
+namespace GChelpers
 {
   public class UnmanagedObjectContext<THandleType>
   {
@@ -14,8 +14,10 @@ namespace JSB.GChelpers
 
     private void DestroyAndFree(THandleType obj)
     {
-      DestroyObj?.Invoke(obj);
-      FreeObject?.Invoke(obj);
+      if (DestroyObj != null) 
+        DestroyObj.Invoke(obj);
+      if (FreeObject != null) 
+        FreeObject.Invoke(obj);
     }
 
     public void AddRefCount()

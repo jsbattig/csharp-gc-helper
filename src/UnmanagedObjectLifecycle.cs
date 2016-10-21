@@ -29,9 +29,9 @@ namespace GChelpers
     private readonly ConcurrentDictionary<THandleType, UnmanagedObjectContext<THandleType>> _trackedObjects = new ConcurrentDictionary<THandleType, UnmanagedObjectContext<THandleType>>();
 
     public void Register(THandleType obj, 
-                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod,
-                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod,
-                         ConcurrentDependencies<THandleType> dependencies)
+                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod = null,
+                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod = null,
+                         ConcurrentDependencies<THandleType> dependencies = null)
     {
       var trackedObject = new UnmanagedObjectContext<THandleType>
       {
@@ -48,7 +48,8 @@ namespace GChelpers
         depContext.AddRefCount();
       }
       if (!_trackedObjects.TryAdd(obj, trackedObject))
-        throw new EObjectAlreadyExists<THandleType>(obj);
+        trackedObject.AddRefCount();
+        //throw new EObjectAlreadyExists<THandleType>(obj);
     }
 
     /* currentlyUnregistering parameter is used to allow circular dependency relationship. When found on a recursive 

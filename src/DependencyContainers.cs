@@ -8,10 +8,9 @@ namespace GChelpers
   {
     private readonly ConcurrentDictionary<THandleType, int> _container = new ConcurrentDictionary<THandleType, int>();
 
-    public void Add(THandleType dep)
+    public bool Add(THandleType dep)
     {
-      if(!_container.TryAdd(dep, 0))
-        throw new EObjectDependencyAlreadyExists<THandleType>(dep);
+      return _container.TryAdd(dep, 0);
     }
 
     public bool Remove(THandleType dep)

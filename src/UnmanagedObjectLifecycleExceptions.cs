@@ -27,16 +27,4 @@ namespace GChelpers
   {
     public EDependencyNotFound(THandleType obj) : base(string.Format("Dependency not found ({0})", obj)) { }
   }
-
-  [Serializable]
-  public class EObjectAlreadyExists<THandleType> : EDisposeHelper
-  {
-    public EObjectAlreadyExists(THandleType obj) : base(string.Format("Object already exists ({0})", obj)) { }
-  }
-
-  [Serializable]
-  public class EObjectDependencyAlreadyExists<THandleType> : EDisposeHelper
-  {
-    public EObjectDependencyAlreadyExists(THandleType obj) : base(string.Format("Dependency already exists ({0})", obj)) { }
-  }
 }

@@ -27,7 +27,7 @@ namespace GChelpers
   {
     private readonly ConcurrentDictionary<THandleType, UnmanagedObjectContext<THandleType>> _trackedObjects = new ConcurrentDictionary<THandleType, UnmanagedObjectContext<THandleType>>();
 
-    public void Register(THandleType obj, 
+    public void Register(THandleType obj,
                          UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod = null,
                          UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod = null,
                          ConcurrentDependencies<THandleType> dependencies = null)
@@ -39,16 +39,24 @@ namespace GChelpers
         FreeObject = freeMethod,
         Dependencies = dependencies ?? new ConcurrentDependencies<THandleType>()
       };
-      foreach (var dep in trackedObject.Dependencies)
+      if (_trackedObjects.TryAdd(obj, trackedObject))
       {
-        UnmanagedObjectContext<THandleType> depContext;
-        if(!_trackedObjects.TryGetValue(dep, out depContext))
-          throw new EObjectNotFound<THandleType>(dep);
-        depContext.AddRefCount();
+        foreach (var dep in trackedObject.Dependencies)
+        {
+          UnmanagedObjectContext<THandleType> depContext;
+          if (!_trackedObjects.TryGetValue(dep, out depContext))
+            throw new EObjectNotFound<THandleType>(dep);
+          depContext.AddRefCount();
+        }
+        return;
       }
-      if (!_trackedObjects.TryAdd(obj, trackedObject))
-        trackedObject.AddRefCount();
-        //throw new EObjectAlreadyExists<THandleType>(obj);
+      if (!_trackedObjects.TryGetValue(obj, out trackedObject))
+        throw new EObjectNotFound<THandleType>(obj);
+      trackedObject.AddRefCount();
+      if (dependencies == null)
+        return;
+      foreach (var dep in dependencies)
+        AddDependency(obj, dep);
     }
 
     /* currentlyUnregistering parameter is used to allow circular dependency relationship. When found on a recursive 
@@ -107,8 +115,8 @@ namespace GChelpers
       UnmanagedObjectContext<THandleType> objContext;
       UnmanagedObjectContext<THandleType> depContext;
       GetObjectsContexts(obj, dep, out objContext, out depContext);
-      objContext.Dependencies.Add(dep);
-      depContext.AddRefCount();
+      if(objContext.Dependencies.Add(dep))
+        depContext.AddRefCount();
     }
 
     public void RemoveDependecy(THandleType obj, THandleType dep)

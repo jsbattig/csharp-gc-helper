@@ -25,11 +25,6 @@ namespace GChelpers
       return _container.TryGetValue(dep, out dummy);
     }
 
-    public void Clear()
-    {
-      _container.Clear();
-    }
-
     public IEnumerator<THandleType> GetEnumerator()
     {
       foreach (var dep in _container)

@@ -1,20 +1,20 @@
 /*
- * This module allows developers to "register" with a given scope unmanaged objects represented by <templated> type.
- * Typically this type will be IntPtr, but will work well if underlying library uses 32 or 64 bits handles.
- * Usage is simple. Call Register passing your unmanaged object handle, a destroy function a free function (when 
+ * This module allows developers to "register" with a given scope unmanaged objects represented by <THandleType> type.
+ * Typically this type will be IntPtr, but will work well if underlying library uses 32 or 64 bits handles also.
+ * Usage is simple. Call Register passing your unmanaged object handle, a destroy handle function, a free handle function (when
  * memory was allocated dynamically) and a list of parent objects represented with the same type of the main handle.
- * 
- * When you are done using an object, typically on the Dispose() method, simply call Unregister() method, it will handle
+ *
+ * When you are done using an object, typically on the Dispose() or Finalizer method, simply call Unregister() method, it will handle
  * decreasing refCount of parents and free what needs to be freed.
- * 
+ *
  * In case you have dependencies that are found "lazily" later on the lifecycle of the object, you can can call AddDependency()
  * to add the new dependency discovered.
- * 
+ *
  * If a dependency goes away, call RemoveDependency()
- * 
+ *
  * Remarks: This library is entirely thread-safe not imposing serialization on the callers at all. Only assumption is that caller
  *          uses the library properly on its calls to Unregister() through explicit calls to Dispose() or usage of using() clause
- *          
+ *
  *          Circular dependencies are not detected. If you have circular dependencies, until at least one dependency if broken
  *          you will be causing a memory leak. This is no different than with other reference counted strategies.
  */
@@ -32,72 +32,61 @@ namespace GChelpers
                          UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod = null,
                          ConcurrentDependencies<THandleType> dependencies = null)
     {
-      var trackedObject = new UnmanagedObjectContext<THandleType>
+      UnmanagedObjectContext<THandleType> trackedObject;
+      do
       {
-        Obj = obj,
-        DestroyObj = destroyMethod,
-        FreeObject = freeMethod,
-        Dependencies = dependencies ?? new ConcurrentDependencies<THandleType>()
-      };
-      if (_trackedObjects.TryAdd(obj, trackedObject))
-      {
-        foreach (var dep in trackedObject.Dependencies)
+        trackedObject = new UnmanagedObjectContext<THandleType>
         {
-          UnmanagedObjectContext<THandleType> depContext;
-          if (!_trackedObjects.TryGetValue(dep, out depContext))
-            throw new EObjectNotFound<THandleType>(dep);
-          depContext.AddRefCount();
+          Obj = obj,
+          DestroyObj = destroyMethod,
+          FreeObject = freeMethod,
+          Dependencies = dependencies = dependencies ?? new ConcurrentDependencies<THandleType>()
+        };
+        if (_trackedObjects.TryAdd(obj, trackedObject))
+        {
+          foreach (var dep in trackedObject.Dependencies)
+          {
+            UnmanagedObjectContext<THandleType> depContext;
+            if (!_trackedObjects.TryGetValue(dep, out depContext))
+              throw new EObjectNotFound<THandleType>(dep);
+            depContext.AddRefCount();
+          }
+          return;
         }
-        return;
-      }
-      if (!_trackedObjects.TryGetValue(obj, out trackedObject))
-        throw new EObjectNotFound<THandleType>(obj);
-      trackedObject.AddRefCount();
-      if (dependencies == null)
-        return;
+        /* First attempt to get trackedObject */
+        if (!_trackedObjects.TryGetValue(obj, out trackedObject))
+          /* Same handle was being utilized by other object getting freed
+           * at the same time we are reusing the handle. Try again */
+          continue;
+        trackedObject.AddRefCount();
+        /* We need to try again to get our trackedObject after adding RefCount,
+         * it's possible that another thread got rid of it anyway. Only guarantee is getting it again
+         * after addingRefCount */
+        if (!_trackedObjects.TryGetValue(obj, out trackedObject))
+          /* Same handle was being utilized by other object getting freed
+           * at the same time we are reusing the handle. Try again */
+          continue;
+        break;
+      } while (true);
       foreach (var dep in dependencies)
-        AddDependency(obj, dep);
+        AddDependency(trackedObject, dep);
     }
 
-    /* currentlyUnregistering parameter is used to allow circular dependency relationship. When found on a recursive 
-       situation unregistering related objects in a circular relationship the code will cut control properly when reaching the
-       starting point of the recursive stack */
-    private void Unregister(THandleType obj, bool disposing, Dependencies<THandleType> currentlyUnregistering)
+    public void Unregister(THandleType obj)
     {
       UnmanagedObjectContext<THandleType> objContext;
       if (!_trackedObjects.TryGetValue(obj, out objContext))
-        if (disposing)
-          throw new EObjectNotFound<THandleType>(obj);
-        else return;
-      if (!objContext.ReleaseRefCount())
-        return;
-      if (!_trackedObjects.TryRemove(obj, out objContext))
         throw new EObjectNotFound<THandleType>(obj);
-      foreach (var dep in objContext.Dependencies)
-      {
-        UnmanagedObjectContext<THandleType> depsDepContext;
-        if (!_trackedObjects.TryGetValue(dep, out depsDepContext))
-          if (disposing && (currentlyUnregistering == null || currentlyUnregistering.Find(dep)))
-            throw new EDependencyObjectNotFound<THandleType>(dep);
-          else continue;
-        if (!depsDepContext.ReleaseRefCount())
-          continue;
-        currentlyUnregistering = currentlyUnregistering ?? new Dependencies<THandleType>();
-        currentlyUnregistering.Add(obj);
-        try
-        {
-          Unregister(dep, disposing, currentlyUnregistering);
-        }
-        finally
-        {
-          currentlyUnregistering.Remove(obj);
-        }
-      }
-    }
-
-    public void Unregister(THandleType obj, bool disposing)
-    {
-      Unregister(obj, disposing, null);
+      //return; // Object was removed in another thread reaching refcount <= 0?
+      if (!objContext.ReleaseRefCount())
+        return; // Object still alive
+      if (!_trackedObjects.TryRemove(obj, out objContext))
+        throw new EFailedObjectRemoval<THandleType>(obj);
+      //return; // Object was removed in another thread reaching refcount <= 0?
+      if (objContext.RefCount > 0)
+        _trackedObjects.TryAdd(obj, objContext); // Need to re-add object, same object added with a call to Register()
+      else foreach (var dep in objContext.PriorDependencies)
+        Unregister(dep);
     }
 
     private void GetObjectsContexts(THandleType obj1, THandleType obj2,
@@ -110,13 +99,29 @@ namespace GChelpers
         throw new EObjectNotFound<THandleType>(obj2);
     }
 
+    private void AddDependency(UnmanagedObjectContext<THandleType> trackedObjectContext, THandleType dep)
+    {
+      UnmanagedObjectContext<THandleType> depContext;
+      if (!_trackedObjects.TryGetValue(dep, out depContext))
+        throw new EObjectNotFound<THandleType>(dep);
+      trackedObjectContext.LockDependencies();
+      try
+      {
+        if (trackedObjectContext.Dependencies.Add(dep))
+          depContext.AddRefCount();
+      }
+      finally
+      {
+        trackedObjectContext.UnlockDependencies();
+      }
+    }
+
     public void AddDependency(THandleType obj, THandleType dep)
     {
       UnmanagedObjectContext<THandleType> objContext;
-      UnmanagedObjectContext<THandleType> depContext;
-      GetObjectsContexts(obj, dep, out objContext, out depContext);
-      if(objContext.Dependencies.Add(dep))
-        depContext.AddRefCount();
+      if (!_trackedObjects.TryGetValue(obj, out objContext))
+        throw new EObjectNotFound<THandleType>(obj);
+      AddDependency(objContext, dep);
     }
 
     public void RemoveDependecy(THandleType obj, THandleType dep)
@@ -124,10 +129,17 @@ namespace GChelpers
       UnmanagedObjectContext<THandleType> objContext;
       UnmanagedObjectContext<THandleType> depContext;
       GetObjectsContexts(obj, dep, out objContext, out depContext);
-      if (!objContext.Dependencies.Remove(dep))
-        throw new EDependencyNotFound<THandleType>(dep);
-      if (depContext.ReleaseRefCount())
-        Unregister(dep, true);
+      objContext.LockDependencies();
+      try
+      {
+        if (!objContext.Dependencies.Remove(dep))
+          throw new EDependencyNotFound<THandleType>(dep);
+      }
+      finally
+      {
+        objContext.UnlockDependencies();
+      }
+      Unregister(dep);
     }
   }
 }

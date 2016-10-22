@@ -17,6 +17,12 @@ namespace GChelpers
   }
 
   [Serializable]
+  public class EFailedObjectRemoval<THandleType> : EDisposeHelper
+  {
+    public EFailedObjectRemoval(THandleType obj) : base(string.Format("Failed to remove object ({0})", obj)) { }
+  }
+
+  [Serializable]
   public class EDependencyObjectNotFound<THandleType> : EObjectNotFound<THandleType>
   {
     public EDependencyObjectNotFound(THandleType obj) : base(obj) { }

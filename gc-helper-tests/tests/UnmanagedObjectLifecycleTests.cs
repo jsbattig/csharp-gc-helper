@@ -5,7 +5,7 @@ using GChelpers;
 
 namespace gc_helper_tests
 {
-  public class TesterClass : IDisposable
+  public class TesterClass
   {
     public static readonly UnmanagedObjectLifecycle<IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectLifecycle<IntPtr>();
     public bool destroyed;
@@ -31,19 +31,9 @@ namespace gc_helper_tests
       UnmanagedObjectLifecycle.Register(Handle, DestroyObject, null, _deps);
     }
 
-    ~TesterClass()
-    {
-      Dispose(false);
-    }
-
-    public void Dispose(bool disposing)
-    {
-      UnmanagedObjectLifecycle.Unregister(Handle, disposing);
-    }
-
     public void Dispose()
     {
-      Dispose(true);
+      UnmanagedObjectLifecycle.Unregister(Handle);
     }
   }
 
@@ -68,7 +58,7 @@ namespace gc_helper_tests
       Assert.IsFalse(obj.destroyed);
       obj.Dispose();
       Assert.IsFalse(obj.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle, true);
+      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
     }
@@ -124,12 +114,12 @@ namespace gc_helper_tests
 
     [Test]
     [ExpectedException(typeof(EObjectNotFound<IntPtr>))]
-    public void UnregisterNonExistingObject_Fails()
+    public void UnregisterNonExistingObject_Success()
     {
       // ReSharper disable once ObjectCreationAsStatement
       var obj = new TesterClass(new IntPtr[] {});
       obj.Handle = IntPtr.Add(obj.Handle, 1);
-      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle, true);
+      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle);
     }
 
     [Test]

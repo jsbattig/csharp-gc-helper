@@ -13,24 +13,24 @@ namespace GChelpers
   [Serializable]
   public class EObjectNotFound<THandleType> : EDisposeHelper
   {
-    public EObjectNotFound(THandleType obj) : base(string.Format("Object not found ({0})", obj)) { }
+    public EObjectNotFound(string typeName, THandleType obj) : base(string.Format("Object not found ({0} {1})", typeName, obj)) { }
   }
 
   [Serializable]
   public class EFailedObjectRemoval<THandleType> : EDisposeHelper
   {
-    public EFailedObjectRemoval(THandleType obj) : base(string.Format("Failed to remove object ({0})", obj)) { }
+    public EFailedObjectRemoval(string typeName, THandleType obj) : base(string.Format("Failed to remove object ({0} {1})", typeName, obj)) { }
   }
 
   [Serializable]
   public class EDependencyObjectNotFound<THandleType> : EObjectNotFound<THandleType>
   {
-    public EDependencyObjectNotFound(THandleType obj) : base(obj) { }
+    public EDependencyObjectNotFound(string typeName, THandleType obj) : base(typeName, obj) { }
   }
 
   [Serializable]
   public class EDependencyNotFound<THandleType> : EDisposeHelper
   {
-    public EDependencyNotFound(THandleType obj) : base(string.Format("Dependency not found ({0})", obj)) { }
+    public EDependencyNotFound(string typeName, THandleType obj) : base(string.Format("Dependency not found ({0} {1})", typeName, obj)) { }
   }
 }

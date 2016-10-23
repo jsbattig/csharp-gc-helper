@@ -19,6 +19,11 @@ namespace gc_helper_tests
       destroyedHandle = obj;
     }
 
+    public UnmanagedObjectContext<IntPtr>.DestroyOrFreeUnmanagedObjectDelegate GetDestroyDelegate()
+    {
+      return DestroyObject;
+    }
+
     public TesterClass(IntPtr[] deps)
     {
       _nextHandle = IntPtr.Add(_nextHandle, 1);
@@ -26,14 +31,14 @@ namespace gc_helper_tests
       var _deps = new ConcurrentDependencies<IntPtr>();
       foreach (var dep in deps)
       {
-        _deps.Add(dep);
+        _deps.Add(typeof(TesterClass).Name, dep);
       }
-      UnmanagedObjectLifecycle.Register(Handle, DestroyObject, null, _deps);
+      UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, Handle, DestroyObject, null, _deps);
     }
 
     public void Dispose()
     {
-      UnmanagedObjectLifecycle.Unregister(Handle);
+      UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, Handle);
     }
   }
 
@@ -50,17 +55,43 @@ namespace gc_helper_tests
     }
 
     [Test]
+    public void BasicTestTwoDifferentTypeNames_Success()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      TesterClass.UnmanagedObjectLifecycle.Register("AnotherClass", obj.Handle);
+      TesterClass.UnmanagedObjectLifecycle.Unregister("AnotherClass", obj.Handle);
+      try
+      {
+        TesterClass.UnmanagedObjectLifecycle.Unregister("AnotherClass", obj.Handle);
+        Assert.Fail("Should error out attempting to double unregister");
+      }
+      catch (EObjectNotFound<IntPtr>) { }
+      obj.Dispose();
+      Assert.IsTrue(obj.destroyed);
+      Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+    }
+
+    [Test]
     public void RegisterObjectTwice_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       Assert.IsFalse(obj.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.Register(obj.Handle);
+      TesterClass.UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, obj.Handle, obj.GetDestroyDelegate());
       Assert.IsFalse(obj.destroyed);
       obj.Dispose();
       Assert.IsFalse(obj.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle);
+      TesterClass.UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, obj.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
+    }
+
+    [Test]
+    //[ExpectedException(typeof(EExistingTrackedObjectDiffers<IntPtr>))]
+    public void RegisterObjectTwiceDifferenDestroyDelegate_Fails()
+    {
+      var obj = new TesterClass(new IntPtr[] { });
+      Assert.IsFalse(obj.destroyed);
+      TesterClass.UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, obj.Handle);
     }
 
     [Test]
@@ -86,7 +117,7 @@ namespace gc_helper_tests
       obj.Dispose();
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj2.Handle, obj.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       obj2.Dispose();
@@ -101,7 +132,7 @@ namespace gc_helper_tests
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj2.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
     }
 
     [Test]
@@ -119,7 +150,7 @@ namespace gc_helper_tests
       // ReSharper disable once ObjectCreationAsStatement
       var obj = new TesterClass(new IntPtr[] {});
       obj.Handle = IntPtr.Add(obj.Handle, 1);
-      TesterClass.UnmanagedObjectLifecycle.Unregister(obj.Handle);
+      TesterClass.UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, obj.Handle);
     }
 
     [Test]
@@ -257,7 +288,7 @@ namespace gc_helper_tests
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
       var obj3 = new TesterClass(new[] { obj2.Handle });
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj.Handle, obj3.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular dependency
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
@@ -268,7 +299,7 @@ namespace gc_helper_tests
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       /* Only way to get objects destroyed is by removing one dependency to destroy the circle */
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -283,9 +314,9 @@ namespace gc_helper_tests
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
       var obj3 = new TesterClass(new[] { obj2.Handle, obj.Handle });
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj.Handle, obj3.Handle); // Circular dependency
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj.Handle, obj2.Handle); // Circular dependency
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(obj2.Handle, obj3.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular dependency
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
@@ -301,15 +332,15 @@ namespace gc_helper_tests
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj.Handle, obj2.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(obj2.Handle, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -330,8 +361,8 @@ namespace gc_helper_tests
       for (var i = 1; i < countThreads; i++)
         for (var j = 1; j < countObjects; j++)
         {
-          TesterClass.UnmanagedObjectLifecycle.AddDependency(objsArray[i - 1, j].Handle, objsArray[i, j].Handle);
-          TesterClass.UnmanagedObjectLifecycle.AddDependency(objsArray[i, j].Handle, objsArray[i - 1, j - 1].Handle);
+          TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, objsArray[i - 1, j].Handle, typeof(TesterClass).Name, objsArray[i, j].Handle);
+          TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, objsArray[i, j].Handle, typeof(TesterClass).Name, objsArray[i - 1, j - 1].Handle);
         }
       var threads = new Thread[countThreads];
       for (var threadNo = 0; threadNo < countThreads; threadNo++)

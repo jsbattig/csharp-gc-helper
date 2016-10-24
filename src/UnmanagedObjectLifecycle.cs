@@ -132,7 +132,7 @@ namespace GChelpers
       AddDependency(objContext, new ClassNameHandlePair(depTypeName, dep));
     }
 
-    public void RemoveDependecy(string typeName, THandleType obj, string depTypeName, THandleType dep)
+    public void RemoveDependency(string typeName, THandleType obj, string depTypeName, THandleType dep)
     {
       var objTuple = new ClassNameHandlePair(typeName, obj);
       var depTuple = new ClassNameHandlePair(depTypeName, dep);

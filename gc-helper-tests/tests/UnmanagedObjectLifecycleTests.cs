@@ -117,7 +117,7 @@ namespace gc_helper_tests
       obj.Dispose();
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       obj2.Dispose();
@@ -132,7 +132,7 @@ namespace gc_helper_tests
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
     }
 
     [Test]
@@ -279,7 +279,7 @@ namespace gc_helper_tests
         Assert.IsTrue(o.destroyed);
         Assert.AreEqual(o.destroyedHandle, o.Handle);
       }
-      Assert.Less(Math.Abs(Environment.TickCount - startTicks), 100);
+      Assert.Less(Math.Abs(Environment.TickCount - startTicks), 200);
     }
 
     [Test]
@@ -299,7 +299,7 @@ namespace gc_helper_tests
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       /* Only way to get objects destroyed is by removing one dependency to destroy the circle */
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -332,15 +332,15 @@ namespace gc_helper_tests
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependecy(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);

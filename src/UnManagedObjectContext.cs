@@ -29,7 +29,7 @@ namespace GChelpers
       // This can go to -1 when object was detroyed while destroying a dependent object
       var localRefCount = Interlocked.Decrement(ref _refCount);
       if (localRefCount < 0)
-        throw new EDisposeHelper("RefCount can't be lower than zero");
+        throw new EGChelper("RefCount can't be lower than zero");
       return localRefCount;
     }
   }

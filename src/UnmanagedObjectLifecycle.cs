@@ -25,16 +25,46 @@ using System.Threading;
 
 namespace GChelpers
 {
-  public class UnmanagedObjectLifecycle<THandleType>
+  internal interface IHandleRemover<in THandleType>
   {
-    private class ClassNameHandlePair : Tuple<string, THandleType>
+    void RemoveAndDestroyHandle(string typeName, THandleType obj);
+  }
+
+  public class UnmanagedObjectLifecycle<THandleType> : IHandleRemover<THandleType>, IDisposable
+  {
+    public class ClassNameHandlePair : Tuple<string, THandleType>
     {
       public ClassNameHandlePair(string className, THandleType handle) : base(className, handle) { }
     }
 
+    public delegate void ExceptionDelegate(UnmanagedObjectLifecycle<THandleType> obj, Exception exception, string typeName, THandleType handle);
     private class TrackedObjects : ConcurrentDictionary<Tuple<string, THandleType>, UnmanagedObjectContext<THandleType>> { }
-
     private readonly TrackedObjects _trackedObjects = new TrackedObjects();
+    private readonly UnregistrationAgent<THandleType> _unregistrationAgent;
+
+    public ExceptionDelegate OnUnregisterException { get; set; }
+
+    public UnmanagedObjectLifecycle()
+    {
+      _unregistrationAgent = new UnregistrationAgent<THandleType>(this);
+    }
+
+    private void Dispose(bool disposing)
+    {
+      if (!disposing)
+        return;
+      _unregistrationAgent.Dispose();
+    }
+
+    public void Dispose()
+    {
+      Dispose(true); 
+    }
+
+    public void StopAgent()
+    {
+      _unregistrationAgent.Stop();
+    }
 
     public void Register(string typeName, THandleType obj,
                          UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod = null,
@@ -87,19 +117,33 @@ namespace GChelpers
         AddDependency(trackedObject, dep);
     }
 
+    public void RemoveAndDestroyHandle(string typeName, THandleType obj)
+    {
+      try
+      {
+        var objTuple = new ClassNameHandlePair(typeName, obj);
+        UnmanagedObjectContext<THandleType> objContext;
+        if (!_trackedObjects.TryGetValue(objTuple, out objContext))
+          throw new EObjectNotFound<THandleType>(objTuple.Item1, objTuple.Item2);
+        if (objContext.ReleaseRefCount() > 0)
+          return; // Object still alive
+        if (!_trackedObjects.TryRemove(objTuple, out objContext))
+          throw new EFailedObjectRemoval<THandleType>(objTuple.Item1, objTuple.Item2);
+        objContext.DestroyAndFree(obj);
+        foreach (var dep in objContext.Dependencies)
+          Unregister(dep.Item1, dep.Item2);
+      }
+      catch (Exception e)
+      {
+        if (OnUnregisterException == null)
+          return;
+        OnUnregisterException(this, e, typeName, obj);
+      }
+    }
+
     public void Unregister(string typeName, THandleType obj)
     {
-      var objTuple = new ClassNameHandlePair(typeName, obj);
-      UnmanagedObjectContext<THandleType> objContext;
-      if (!_trackedObjects.TryGetValue(objTuple, out objContext))
-        throw new EObjectNotFound<THandleType>(objTuple.Item1, objTuple.Item2);
-      if (objContext.ReleaseRefCount() > 0)
-        return; // Object still alive
-      if (!_trackedObjects.TryRemove(objTuple, out objContext))
-        throw new EFailedObjectRemoval<THandleType>(objTuple.Item1, objTuple.Item2);
-      objContext.DestroyAndFree(obj);
-      foreach (var dep in objContext.Dependencies)
-        Unregister(dep.Item1, dep.Item2);
+      _unregistrationAgent.Enqueue(typeName, obj);
     }
 
     private void GetObjectsContexts(ClassNameHandlePair obj1,

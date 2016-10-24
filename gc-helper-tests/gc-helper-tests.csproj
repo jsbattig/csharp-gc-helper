@@ -53,6 +53,9 @@
     <Compile Include="..\src\UnmanagedObjectLifecycleExceptions.cs">
       <Link>src\UnmanagedObjectLifecycleExceptions.cs</Link>
     </Compile>
+    <Compile Include="..\src\UnregistrationAgent.cs">
+      <Link>src\UnregistrationAgent.cs</Link>
+    </Compile>
     <Compile Include="tests\UnmanagedObjectLifecycleTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

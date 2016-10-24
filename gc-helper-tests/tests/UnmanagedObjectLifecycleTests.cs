@@ -44,12 +44,39 @@ namespace gc_helper_tests
 
   public class UnamangedObjectLifecycleTests
   {
+    private Exception _raisedException;
+    public void ExceptionUnregisteringHandle(UnmanagedObjectLifecycle<IntPtr> obj, Exception exception,
+      string typeName, IntPtr handle)
+    {
+      _raisedException = exception;
+    }
+
+    [SetUp]
+    public void Setup()
+    {
+      _raisedException = null;
+      TesterClass.UnmanagedObjectLifecycle.OnUnregisterException = ExceptionUnregisteringHandle;
+    }
+
+    [TearDown]
+    public void Teardown()
+    {
+      TesterClass.UnmanagedObjectLifecycle.OnUnregisterException = null;
+    }
+
+    [TestFixtureTearDown]
+    public void TestFixtureTeardown()
+    {
+      TesterClass.UnmanagedObjectLifecycle.Dispose();
+    }
+
     [Test]
     public void BasicTest_Success()
     {
       var obj = new TesterClass(new IntPtr[] {});
       Assert.IsFalse(obj.destroyed);
       obj.Dispose();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
     }
@@ -60,13 +87,13 @@ namespace gc_helper_tests
       var obj = new TesterClass(new IntPtr[] { });
       TesterClass.UnmanagedObjectLifecycle.Register("AnotherClass", obj.Handle);
       TesterClass.UnmanagedObjectLifecycle.Unregister("AnotherClass", obj.Handle);
-      try
-      {
-        TesterClass.UnmanagedObjectLifecycle.Unregister("AnotherClass", obj.Handle);
-        Assert.Fail("Should error out attempting to double unregister");
-      }
-      catch (EObjectNotFound<IntPtr>) { }
+      TesterClass.UnmanagedObjectLifecycle.Unregister("AnotherClass", obj.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
+      Assert.IsTrue(_raisedException is EObjectNotFound<IntPtr>);
       obj.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
     }
@@ -79,8 +106,12 @@ namespace gc_helper_tests
       TesterClass.UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, obj.Handle, obj.GetDestroyDelegate());
       Assert.IsFalse(obj.destroyed);
       obj.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       TesterClass.UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, obj.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
     }
@@ -100,9 +131,13 @@ namespace gc_helper_tests
       var obj = new TesterClass(new IntPtr[] {});
       var obj2 = new TesterClass(new[] { obj.Handle });
       obj.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       obj2.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
@@ -115,12 +150,17 @@ namespace gc_helper_tests
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
       obj.Dispose();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       obj2.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj2.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
       Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
@@ -144,13 +184,15 @@ namespace gc_helper_tests
     }
 
     [Test]
-    [ExpectedException(typeof(EObjectNotFound<IntPtr>))]
     public void UnregisterNonExistingObject_Success()
     {
       // ReSharper disable once ObjectCreationAsStatement
       var obj = new TesterClass(new IntPtr[] {});
       obj.Handle = IntPtr.Add(obj.Handle, 1);
       TesterClass.UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, obj.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
+      Assert.IsTrue(_raisedException is EObjectNotFound<IntPtr>);
     }
 
     [Test]
@@ -161,10 +203,14 @@ namespace gc_helper_tests
       var obj3 = new TesterClass(new [] { obj.Handle, obj2.Handle});
       obj.Dispose();
       obj2.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj3.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -181,10 +227,13 @@ namespace gc_helper_tests
       var obj3 = new TesterClass(new[] { obj2.Handle });
       obj.Dispose();
       obj2.Dispose();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj3.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -203,11 +252,15 @@ namespace gc_helper_tests
       obj.Dispose();
       obj2.Dispose();
       obj3.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       Assert.IsFalse(obj4.destroyed);
       obj4.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -226,18 +279,25 @@ namespace gc_helper_tests
       var obj3 = new TesterClass(new[] { obj.Handle });
       var obj4 = new TesterClass(new[] { obj3.Handle, obj2.Handle });
       obj4.Dispose();
+      Thread.Sleep(200);
       Assert.IsTrue(obj4.destroyed);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj2.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj3.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsTrue(obj3.destroyed);
       obj.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
       Assert.AreEqual(obj2.Handle, obj2.destroyedHandle);
@@ -269,6 +329,8 @@ namespace gc_helper_tests
       thread2.Start();
       thread1.Join();
       thread2.Join();
+      Thread.Yield();
+      Thread.Sleep(200);
       foreach (var o in objs1)
       {
         Assert.IsTrue(o.destroyed);
@@ -279,7 +341,7 @@ namespace gc_helper_tests
         Assert.IsTrue(o.destroyed);
         Assert.AreEqual(o.destroyedHandle, o.Handle);
       }
-      Assert.Less(Math.Abs(Environment.TickCount - startTicks), 200);
+      Assert.Less(Math.Abs(Environment.TickCount - startTicks), 400);
     }
 
     [Test]
@@ -295,11 +357,15 @@ namespace gc_helper_tests
       obj.Dispose();
       obj2.Dispose();
       obj3.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       /* Only way to get objects destroyed is by removing one dependency to destroy the circle */
       TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -321,26 +387,37 @@ namespace gc_helper_tests
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj2.Dispose();
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       obj3.Dispose();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
       TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle);
+      Thread.Yield();
+      Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
       Assert.IsTrue(obj2.destroyed);
       Assert.IsTrue(obj3.destroyed);
@@ -381,6 +458,8 @@ namespace gc_helper_tests
         t.Start();
       foreach (var t in threads)
         t.Join();
+      Thread.Yield();
+      Thread.Sleep(800);
       foreach (var o in objsArray)
       {
         Assert.IsTrue(o.destroyed);

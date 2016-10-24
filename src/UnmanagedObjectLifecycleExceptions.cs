@@ -3,21 +3,21 @@ using System;
 namespace GChelpers
 {
   [Serializable]
-  public class EDisposeHelper : Exception
+  public class EGChelper : Exception
   {
-    public EDisposeHelper() { }
+    public EGChelper() { }
 
-    public EDisposeHelper(string msg) : base(msg) { }
+    public EGChelper(string msg) : base(msg) { }
   }
 
   [Serializable]
-  public class EObjectNotFound<THandleType> : EDisposeHelper
+  public class EObjectNotFound<THandleType> : EGChelper
   {
     public EObjectNotFound(string typeName, THandleType obj) : base(string.Format("Object not found ({0} {1})", typeName, obj)) { }
   }
 
   [Serializable]
-  public class EFailedObjectRemoval<THandleType> : EDisposeHelper
+  public class EFailedObjectRemoval<THandleType> : EGChelper
   {
     public EFailedObjectRemoval(string typeName, THandleType obj) : base(string.Format("Failed to remove object ({0} {1})", typeName, obj)) { }
   }
@@ -29,7 +29,7 @@ namespace GChelpers
   }
 
   [Serializable]
-  public class EDependencyNotFound<THandleType> : EDisposeHelper
+  public class EDependencyNotFound<THandleType> : EGChelper
   {
     public EDependencyNotFound(string typeName, THandleType obj) : base(string.Format("Dependency not found ({0} {1})", typeName, obj)) { }
   }

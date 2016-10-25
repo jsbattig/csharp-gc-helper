@@ -9,14 +9,14 @@ namespace GChelpers
     private readonly Thread _unregistrationThread;
     private readonly IHandleRemover<THandleType> _handleRemover;
     private bool _requestedStop;
-    private readonly ConcurrentQueue<UnmanagedObjectLifecycle<THandleType>.ClassNameHandlePair> _unregistrationQueue;
+    private readonly ConcurrentQueue<UnmanagedObjectGCHelper<THandleType>.ClassNameHandlePair> _unregistrationQueue;
     private readonly AutoResetEvent _eventWaitHandle;
 
     internal UnregistrationAgent(IHandleRemover<THandleType> handleRemover)
     {
       _handleRemover = handleRemover;
       _eventWaitHandle = new AutoResetEvent(false);
-      _unregistrationQueue = new ConcurrentQueue<UnmanagedObjectLifecycle<THandleType>.ClassNameHandlePair>();
+      _unregistrationQueue = new ConcurrentQueue<UnmanagedObjectGCHelper<THandleType>.ClassNameHandlePair>();
       _unregistrationThread = new Thread(Run);
       _unregistrationThread.Start();
     }
@@ -38,7 +38,7 @@ namespace GChelpers
     {
       if (_requestedStop)
         return;
-      _unregistrationQueue.Enqueue(new UnmanagedObjectLifecycle<THandleType>.ClassNameHandlePair(className, handle));
+      _unregistrationQueue.Enqueue(new UnmanagedObjectGCHelper<THandleType>.ClassNameHandlePair(className, handle));
       _eventWaitHandle.Set();
     }
 
@@ -46,7 +46,7 @@ namespace GChelpers
     {
       while (true)
       {
-        UnmanagedObjectLifecycle<THandleType>.ClassNameHandlePair dequeuedClassNameHandlePair;
+        UnmanagedObjectGCHelper<THandleType>.ClassNameHandlePair dequeuedClassNameHandlePair;
         if (!_unregistrationQueue.TryDequeue(out dequeuedClassNameHandlePair))
         {
           if (_requestedStop)

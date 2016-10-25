@@ -7,7 +7,7 @@ namespace gc_helper_tests
 {
   public class TesterClass
   {
-    public static readonly UnmanagedObjectLifecycle<IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectLifecycle<IntPtr>();
+    public static readonly UnmanagedObjectGCHelper<IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectGCHelper<IntPtr>();
     public bool destroyed;
     public IntPtr destroyedHandle;
     private static IntPtr _nextHandle = IntPtr.Zero;
@@ -45,7 +45,7 @@ namespace gc_helper_tests
   public class UnamangedObjectLifecycleTests
   {
     private Exception _raisedException;
-    public void ExceptionUnregisteringHandle(UnmanagedObjectLifecycle<IntPtr> obj, Exception exception,
+    public void ExceptionUnregisteringHandle(UnmanagedObjectGCHelper<IntPtr> obj, Exception exception,
       string typeName, IntPtr handle)
     {
       _raisedException = exception;
@@ -62,6 +62,7 @@ namespace gc_helper_tests
     public void Teardown()
     {
       TesterClass.UnmanagedObjectLifecycle.OnUnregisterException = null;
+      Assert.IsNull(_raisedException);
     }
 
     [TestFixtureTearDown]
@@ -91,6 +92,7 @@ namespace gc_helper_tests
       Thread.Yield();
       Thread.Sleep(200);
       Assert.IsTrue(_raisedException is EObjectNotFound<IntPtr>);
+      _raisedException = null;
       obj.Dispose();
       Thread.Yield();
       Thread.Sleep(200);
@@ -193,6 +195,7 @@ namespace gc_helper_tests
       Thread.Yield();
       Thread.Sleep(200);
       Assert.IsTrue(_raisedException is EObjectNotFound<IntPtr>);
+      _raisedException = null;
     }
 
     [Test]
@@ -341,7 +344,7 @@ namespace gc_helper_tests
         Assert.IsTrue(o.destroyed);
         Assert.AreEqual(o.destroyedHandle, o.Handle);
       }
-      Assert.Less(Math.Abs(Environment.TickCount - startTicks), 400);
+      Assert.Less(Math.Abs(Environment.TickCount - startTicks), 500);
     }
 
     [Test]

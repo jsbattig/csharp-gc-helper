@@ -30,21 +30,22 @@ namespace GChelpers
     void RemoveAndDestroyHandle(string typeName, THandleType obj);
   }
 
-  public class UnmanagedObjectLifecycle<THandleType> : IHandleRemover<THandleType>, IDisposable
+  // ReSharper disable once InconsistentNaming
+  public class UnmanagedObjectGCHelper<THandleType> : IHandleRemover<THandleType>, IDisposable
   {
     public class ClassNameHandlePair : Tuple<string, THandleType>
     {
       public ClassNameHandlePair(string className, THandleType handle) : base(className, handle) { }
     }
 
-    public delegate void ExceptionDelegate(UnmanagedObjectLifecycle<THandleType> obj, Exception exception, string typeName, THandleType handle);
+    public delegate void ExceptionDelegate(UnmanagedObjectGCHelper<THandleType> obj, Exception exception, string typeName, THandleType handle);
     private class TrackedObjects : ConcurrentDictionary<Tuple<string, THandleType>, UnmanagedObjectContext<THandleType>> { }
     private readonly TrackedObjects _trackedObjects = new TrackedObjects();
     private readonly UnregistrationAgent<THandleType> _unregistrationAgent;
 
     public ExceptionDelegate OnUnregisterException { get; set; }
 
-    public UnmanagedObjectLifecycle()
+    public UnmanagedObjectGCHelper()
     {
       _unregistrationAgent = new UnregistrationAgent<THandleType>(this);
     }
@@ -58,7 +59,7 @@ namespace GChelpers
 
     public void Dispose()
     {
-      Dispose(true); 
+      Dispose(true);
     }
 
     public void StopAgent()
@@ -98,7 +99,10 @@ namespace GChelpers
          * If it returns <= 1 it means it just got decremented in another thread, reached zero and
          * it's about to be destroyed. So we will have to wait for that to happen and try again our
          * entire operation */
-        if (existingContextObj.AddRefCount() <= 1)
+        var newRefCount = existingContextObj.AddRefCount();
+        if (newRefCount <= 0)
+          throw new EInvalidRefCount<THandleType>(typeName, obj, newRefCount);
+        if (newRefCount == 1)
         {
           /* Object is getting removed in another thread. Let's spin while we wait for it to be gone
            * from our _trackedObjects container */
@@ -125,8 +129,11 @@ namespace GChelpers
         UnmanagedObjectContext<THandleType> objContext;
         if (!_trackedObjects.TryGetValue(objTuple, out objContext))
           throw new EObjectNotFound<THandleType>(objTuple.Item1, objTuple.Item2);
-        if (objContext.ReleaseRefCount() > 0)
+        var newRefCount = objContext.ReleaseRefCount();
+        if (newRefCount > 0)
           return; // Object still alive
+        if (newRefCount < 0)
+          throw new EInvalidRefCount<THandleType>(typeName, obj, newRefCount);
         if (!_trackedObjects.TryRemove(objTuple, out objContext))
           throw new EFailedObjectRemoval<THandleType>(objTuple.Item1, objTuple.Item2);
         objContext.DestroyAndFree(obj);

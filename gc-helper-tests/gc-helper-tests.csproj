@@ -47,11 +47,14 @@
     <Compile Include="..\src\UnmanagedObjectContext.cs">
       <Link>src\UnmanagedObjectContext.cs</Link>
     </Compile>
-    <Compile Include="..\src\UnmanagedObjectLifecycle.cs">
-      <Link>src\UnmanagedObjectLifecycle.cs</Link>
+    <Compile Include="..\src\UnmanagedObjectGCHelper.cs">
+      <Link>src\UnmanagedObjectGCHelper.cs</Link>
     </Compile>
-    <Compile Include="..\src\UnmanagedObjectLifecycleExceptions.cs">
-      <Link>src\UnmanagedObjectLifecycleExceptions.cs</Link>
+    <Compile Include="..\src\UnmanagedObjectGCHelperExceptions.cs">
+      <Link>src\UnmanagedObjectGCHelperExceptions.cs</Link>
+    </Compile>
+    <Compile Include="..\src\UnregistrationAgent.cs">
+      <Link>src\UnregistrationAgent.cs</Link>
     </Compile>
     <Compile Include="tests\UnmanagedObjectLifecycleTests.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />

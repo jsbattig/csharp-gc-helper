@@ -19,7 +19,7 @@ namespace gc_helper_tests
       destroyedHandle = obj;
     }
 
-    public UnmanagedObjectContext<string, IntPtr>.DestroyOrFreeUnmanagedObjectDelegate GetDestroyDelegate()
+    public UnmanagedObjectContext<string, IntPtr>.DestroyHandleDelegate GetDestroyDelegate()
     {
       return DestroyObject;
     }
@@ -33,7 +33,7 @@ namespace gc_helper_tests
       {
         _deps.Add(typeof(TesterClass).Name, dep);
       }
-      UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, Handle, DestroyObject, null, _deps);
+      UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, Handle, DestroyObject, _deps);
     }
 
     public void Dispose()

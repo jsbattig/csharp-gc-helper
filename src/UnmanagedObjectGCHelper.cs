@@ -80,15 +80,13 @@ namespace GChelpers
     }
 
     public void Register(THandleClass handleClass, THandle obj,
-                         UnmanagedObjectContext<THandleClass, THandle>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod = null,
-                         UnmanagedObjectContext<THandleClass, THandle>.DestroyOrFreeUnmanagedObjectDelegate freeMethod = null,
+                         UnmanagedObjectContext<THandleClass, THandle>.DestroyHandleDelegate destroyHandle = null,
                          ConcurrentDependencies<THandleClass, THandle> dependencies = null)
     {
       var handleContainer = new HandleContainer(handleClass, obj);
       var trackedObject = new UnmanagedObjectContext<THandleClass, THandle>
       {
-        DestroyObj = destroyMethod,
-        FreeObject = freeMethod,
+        DestroyHandle = destroyHandle,
         Dependencies = dependencies ?? new ConcurrentDependencies<THandleClass, THandle>()
       };
       do
@@ -125,8 +123,7 @@ namespace GChelpers
         trackedObject = existingContextObj;
         /* Object already exists, could be an stale object not yet garbage collected,
          * so we will set the new cleanup methods in place of the current ones */
-        trackedObject.DestroyObj = destroyMethod;
-        trackedObject.FreeObject = freeMethod;
+        trackedObject.DestroyHandle = destroyHandle;
         break;
       } while (true);
       foreach (var dep in trackedObject.Dependencies)

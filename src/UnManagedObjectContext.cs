@@ -13,7 +13,7 @@ namespace GChelpers
     public void DestroyAndFree(THandle obj)
     {
       if (DestroyHandle != null)
-        DestroyHandle.Invoke(obj);
+        DestroyHandle(obj);
     }
 
     public int AddRefCount()

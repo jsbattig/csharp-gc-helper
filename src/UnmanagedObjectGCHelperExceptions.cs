@@ -3,6 +3,7 @@ using System;
 namespace GChelpers
 {
   [Serializable]
+  // ReSharper disable once InconsistentNaming
   public class EGChelper : Exception
   {
     public EGChelper() { }
@@ -11,32 +12,32 @@ namespace GChelpers
   }
 
   [Serializable]
-  public class EInvalidRefCount<THandleType> : EGChelper
+  public class EInvalidRefCount<THandleClass, THandleType> : EGChelper
   {
-    public EInvalidRefCount(string typeName, THandleType obj, int refCount) : base(string.Format("Invalid refcount value reached: {0} ({1} {2})", refCount, typeName, obj)) { }
+    public EInvalidRefCount(THandleClass handleClass, THandleType obj, int refCount) : base(string.Format("Invalid refcount value reached: {0} ({1} {2})", refCount, handleClass, obj)) { }
   }
 
   [Serializable]
-  public class EObjectNotFound<THandleType> : EGChelper
+  public class EObjectNotFound<THandleClass, THandleType> : EGChelper
   {
-    public EObjectNotFound(string typeName, THandleType obj) : base(string.Format("Object not found ({0} {1})", typeName, obj)) { }
+    public EObjectNotFound(THandleClass handleClass, THandleType obj) : base(string.Format("Object not found ({0} {1})", handleClass, obj)) { }
   }
 
   [Serializable]
-  public class EFailedObjectRemoval<THandleType> : EGChelper
+  public class EFailedObjectRemoval<THandleClass, THandleType> : EGChelper
   {
-    public EFailedObjectRemoval(string typeName, THandleType obj) : base(string.Format("Failed to remove object ({0} {1})", typeName, obj)) { }
+    public EFailedObjectRemoval(THandleClass handleClass, THandleType obj) : base(string.Format("Failed to remove object ({0} {1})", handleClass, obj)) { }
   }
 
   [Serializable]
-  public class EDependencyObjectNotFound<THandleType> : EObjectNotFound<THandleType>
+  public class EDependencyObjectNotFound<THandleClass, THandleType> : EObjectNotFound<THandleClass, THandleType>
   {
-    public EDependencyObjectNotFound(string typeName, THandleType obj) : base(typeName, obj) { }
+    public EDependencyObjectNotFound(THandleClass handleClass, THandleType obj) : base(handleClass, obj) { }
   }
 
   [Serializable]
-  public class EDependencyNotFound<THandleType> : EGChelper
+  public class EDependencyNotFound<THandleClass, THandleType> : EGChelper
   {
-    public EDependencyNotFound(string typeName, THandleType obj) : base(string.Format("Dependency not found ({0} {1})", typeName, obj)) { }
+    public EDependencyNotFound(THandleClass handleClass, THandleType obj) : base(string.Format("Dependency not found ({0} {1})", handleClass, obj)) { }
   }
 }

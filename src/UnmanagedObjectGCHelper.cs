@@ -171,16 +171,16 @@ namespace GChelpers
       AddDependency(objContext, new HandleContainer(depHandleClass, dep));
     }
 
-    public void RemoveDependency(THandleClass handleClass, THandle obj, THandleClass depHandeClass, THandle dep)
+    public void RemoveDependency(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
     {
       var objTuple = new HandleContainer(handleClass, obj);
-      var depTuple = new HandleContainer(depHandeClass, dep);
+      var depTuple = new HandleContainer(depHandleClass, dep);
       UnmanagedObjectContext<THandleClass, THandle> objContext;
       UnmanagedObjectContext<THandleClass, THandle> depContext;
       GetObjectsContexts(objTuple, depTuple, out objContext, out depContext);
       if (!objContext.Dependencies.Remove(depTuple.Item1, depTuple.Item2))
-        throw new EDependencyNotFound<THandleClass, THandle>(depHandeClass, dep);
-      Unregister(depHandeClass, dep);
+        throw new EDependencyNotFound<THandleClass, THandle>(depHandleClass, dep);
+      Unregister(depHandleClass, dep);
     }
   }
 }

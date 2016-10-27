@@ -4,9 +4,9 @@ using System.Threading;
 
 namespace GChelpers
 {
-  internal interface IHandleRemover<in THandleClass, in THandleType>
+  internal interface IHandleRemover<in THandleClass, in THandle>
   {
-    void RemoveAndDestroyHandle(THandleClass handleClass, THandleType obj);
+    void RemoveAndDestroyHandle(THandleClass handleClass, THandle obj);
   }
 
   /// <summary>

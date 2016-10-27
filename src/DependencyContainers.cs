@@ -20,12 +20,6 @@ namespace GChelpers
       return _container.TryRemove(new Tuple<THandleClass, THandle>(handleClass, dep), out dummy);
     }
 
-    public bool Find(THandleClass handleClass, THandle dep)
-    {
-      int dummy;
-      return _container.TryGetValue(new Tuple<THandleClass, THandle>(handleClass, dep), out dummy);
-    }
-
     public IEnumerator<Tuple<THandleClass, THandle>> GetEnumerator()
     {
       foreach (var dep in _container)

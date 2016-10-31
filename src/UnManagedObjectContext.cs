@@ -25,5 +25,10 @@ namespace GChelpers
     {
       return Interlocked.Decrement(ref _refCount);
     }
+
+    public void InitDependencies()
+    {
+      Dependencies = new ConcurrentDependencies<THandleClass, THandle>();
+    }
   }
 }

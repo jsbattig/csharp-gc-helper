@@ -126,18 +126,18 @@ namespace GChelpers
           return; // Object still alive
         if (newRefCount < 0)
           throw new EInvalidRefCount<THandleClass, THandle>(handleClass, obj, newRefCount);
-        if (!_trackedObjects.TryRemove(objTuple, out objContext))
-          throw new EFailedObjectRemoval<THandleClass, THandle>(objTuple.Item1, objTuple.Item2);
-        objContext.DestroyAndFree(obj);
         try
         {
+          objContext.DestroyAndFree(obj);
+          if (objContext.Dependencies == null)
+            return;
           foreach (var dep in objContext.Dependencies)
             RemoveDependency(handleClass, obj, objContext, dep);
         }
-        catch (EDependencyNotFound<THandleClass, THandle>)
+        finally
         {
-          /* This is likely caused because concurrently there was a call to Register who initialized _dependencies field
-           * of our objContext instance. Let's ignore this exception and get out of here */
+          if (!_trackedObjects.TryRemove(objTuple, out objContext))
+            throw new EFailedObjectRemoval<THandleClass, THandle>(objTuple.Item1, objTuple.Item2);
         }
       }
       catch (Exception e)

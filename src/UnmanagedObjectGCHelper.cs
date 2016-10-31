@@ -1,53 +1,44 @@
-/*
- * This module allows developers to "register" with a given scope unmanaged objects represented by <THandleType> type.
- * Typically this type will be IntPtr, but will work well if underlying library uses 32 or 64 bits handles also.
- * Usage is simple. Call Register passing your unmanaged object handle, a destroy handle function, a free handle function (when
- * memory was allocated dynamically) and a list of parent objects represented with the same type of the main handle.
- *
- * When you are done using an object, typically on the Dispose() or Finalizer method, simply call Unregister() method, it will handle
- * decreasing refCount of parents and free what needs to be freed.
- *
- * In case you have dependencies that are found "lazily" later on the lifecycle of the object, you can can call AddDependency()
- * to add the new dependency discovered.
- *
- * If a dependency goes away, call RemoveDependency()
- *
- * Remarks: This library is entirely thread-safe not imposing serialization on the callers at all. Only assumption is that caller
- *          uses the library properly on its calls to Unregister() through explicit calls to Dispose() or usage of using() clause
- *
- *          Circular dependencies are not detected. If you have circular dependencies, until at least one dependency if broken
- *          you will be causing a memory leak. This is no different than with other reference counted strategies.
- */
-
 using System;
 using System.Collections.Concurrent;
 using System.Threading;
 
 namespace GChelpers
 {
-  internal interface IHandleRemover<in THandleType>
+  internal interface IHandleRemover<in THandleClass, in THandle>
   {
-    void RemoveAndDestroyHandle(string typeName, THandleType obj);
+    void RemoveAndDestroyHandle(THandleClass handleClass, THandle obj);
   }
 
+  /// <summary>
+  ///
+  ///  This class helps to track unmanaged handles, typically coming from an unmanaged DLL.
+  ///  You may want to use this class in situations where the handles have intrinsict relationships
+  ///  between them dictating that they can't be left to the garbage collector to be disposed thorough
+  ///  wrapper object finalizer.
+  ///
+  ///  With this class a tracking record can be established per handle that needs to be tracked, specifying
+  ///  a object destructor method and a object free method. The destruction may not deallocate the
+  ///  unmanaged memory, while the free method will do that.
+  ///
+  /// </summary>
   // ReSharper disable once InconsistentNaming
-  public class UnmanagedObjectGCHelper<THandleType> : IHandleRemover<THandleType>, IDisposable
+  public class UnmanagedObjectGCHelper<THandleClass, THandle> : IHandleRemover<THandleClass, THandle>, IDisposable
   {
-    public class ClassNameHandlePair : Tuple<string, THandleType>
+    public class HandleContainer : Tuple<THandleClass, THandle>
     {
-      public ClassNameHandlePair(string className, THandleType handle) : base(className, handle) { }
+      public HandleContainer(THandleClass handleClass, THandle handle) : base(handleClass, handle) { }
     }
 
-    public delegate void ExceptionDelegate(UnmanagedObjectGCHelper<THandleType> obj, Exception exception, string typeName, THandleType handle);
-    private class TrackedObjects : ConcurrentDictionary<Tuple<string, THandleType>, UnmanagedObjectContext<THandleType>> { }
+    public delegate void ExceptionDelegate(UnmanagedObjectGCHelper<THandleClass, THandle> obj, Exception exception, THandleClass handleClass, THandle handle);
+    private class TrackedObjects : ConcurrentDictionary<Tuple<THandleClass, THandle>, UnmanagedObjectContext<THandleClass, THandle>> { }
     private readonly TrackedObjects _trackedObjects = new TrackedObjects();
-    private readonly UnregistrationAgent<THandleType> _unregistrationAgent;
+    private readonly UnregistrationAgent<THandleClass, THandle> _unregistrationAgent;
 
     public ExceptionDelegate OnUnregisterException { get; set; }
 
     public UnmanagedObjectGCHelper()
     {
-      _unregistrationAgent = new UnregistrationAgent<THandleType>(this);
+      _unregistrationAgent = new UnregistrationAgent<THandleClass, THandle>(this);
     }
 
     private void Dispose(bool disposing)
@@ -67,33 +58,33 @@ namespace GChelpers
       _unregistrationAgent.Stop();
     }
 
-    public void Register(string typeName, THandleType obj,
-                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate destroyMethod = null,
-                         UnmanagedObjectContext<THandleType>.DestroyOrFreeUnmanagedObjectDelegate freeMethod = null,
-                         ConcurrentDependencies<THandleType> dependencies = null)
+    public void Register(THandleClass handleClass, THandle obj,
+                         UnmanagedObjectContext<THandleClass, THandle>.DestroyHandleDelegate destroyHandle = null,
+                         ConcurrentDependencies<THandleClass, THandle> dependencies = null)
     {
-      var typeNameObjTuple = new ClassNameHandlePair(typeName, obj);
-      var trackedObject = new UnmanagedObjectContext<THandleType>
+      var handleContainer = new HandleContainer(handleClass, obj);
+      var trackedObject = new UnmanagedObjectContext<THandleClass, THandle>
       {
-        DestroyObj = destroyMethod,
-        FreeObject = freeMethod,
-        Dependencies = dependencies ?? new ConcurrentDependencies<THandleType>()
+        DestroyHandle = destroyHandle,
+        Dependencies = dependencies
       };
       do
       {
-        if (_trackedObjects.TryAdd(typeNameObjTuple, trackedObject))
+        if (_trackedObjects.TryAdd(handleContainer, trackedObject))
         {
+          if (dependencies == null)
+            return;
           foreach (var dep in trackedObject.Dependencies)
           {
-            UnmanagedObjectContext<THandleType> depContext;
+            UnmanagedObjectContext<THandleClass, THandle> depContext;
             if (!_trackedObjects.TryGetValue(dep, out depContext))
-              throw new EObjectNotFound<THandleType>(dep.Item1, dep.Item2);
+              throw new EObjectNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
             depContext.AddRefCount();
           }
           return;
         }
-        UnmanagedObjectContext<THandleType> existingContextObj;
-        if (!_trackedObjects.TryGetValue(typeNameObjTuple, out existingContextObj))
+        UnmanagedObjectContext<THandleClass, THandle> existingContextObj;
+        if (!_trackedObjects.TryGetValue(handleContainer, out existingContextObj))
           continue; /* Object just dropped and removed from another thread. Let's try again */
         /* If object already existed, under normal conditions AddRefCount() must return a value > 1.
          * If it returns <= 1 it means it just got decremented in another thread, reached zero and
@@ -101,98 +92,107 @@ namespace GChelpers
          * entire operation */
         var newRefCount = existingContextObj.AddRefCount();
         if (newRefCount <= 0)
-          throw new EInvalidRefCount<THandleType>(typeName, obj, newRefCount);
+          throw new EInvalidRefCount<THandleClass, THandle>(handleClass, obj, newRefCount);
         if (newRefCount == 1)
         {
           /* Object is getting removed in another thread. Let's spin while we wait for it to be gone
            * from our _trackedObjects container */
-          while (_trackedObjects.TryGetValue(typeNameObjTuple, out existingContextObj))
+          while (_trackedObjects.TryGetValue(handleContainer, out existingContextObj))
             Thread.Yield();
           continue;
         }
         trackedObject = existingContextObj;
         /* Object already exists, could be an stale object not yet garbage collected,
          * so we will set the new cleanup methods in place of the current ones */
-        trackedObject.DestroyObj = destroyMethod;
-        trackedObject.FreeObject = freeMethod;
+        trackedObject.DestroyHandle = destroyHandle;
         break;
       } while (true);
-      foreach (var dep in trackedObject.Dependencies)
+      if (dependencies == null)
+        return;
+      foreach (var dep in dependencies)
         AddDependency(trackedObject, dep);
     }
 
-    public void RemoveAndDestroyHandle(string typeName, THandleType obj)
+    public void RemoveAndDestroyHandle(THandleClass handleClass, THandle obj)
     {
       try
       {
-        var objTuple = new ClassNameHandlePair(typeName, obj);
-        UnmanagedObjectContext<THandleType> objContext;
+        var objTuple = new HandleContainer(handleClass, obj);
+        UnmanagedObjectContext<THandleClass, THandle> objContext;
         if (!_trackedObjects.TryGetValue(objTuple, out objContext))
-          throw new EObjectNotFound<THandleType>(objTuple.Item1, objTuple.Item2);
+          throw new EObjectNotFound<THandleClass, THandle>(objTuple.Item1, objTuple.Item2);
         var newRefCount = objContext.ReleaseRefCount();
         if (newRefCount > 0)
           return; // Object still alive
         if (newRefCount < 0)
-          throw new EInvalidRefCount<THandleType>(typeName, obj, newRefCount);
+          throw new EInvalidRefCount<THandleClass, THandle>(handleClass, obj, newRefCount);
         if (!_trackedObjects.TryRemove(objTuple, out objContext))
-          throw new EFailedObjectRemoval<THandleType>(objTuple.Item1, objTuple.Item2);
+          throw new EFailedObjectRemoval<THandleClass, THandle>(objTuple.Item1, objTuple.Item2);
         objContext.DestroyAndFree(obj);
-        foreach (var dep in objContext.Dependencies)
-          Unregister(dep.Item1, dep.Item2);
+        try
+        {
+          foreach (var dep in objContext.Dependencies)
+            RemoveDependency(handleClass, obj, objContext, dep);
+        }
+        catch (EDependencyNotFound<THandleClass, THandle>)
+        {
+          /* This is likely caused because concurrently there was a call to Register who initialized _dependencies field
+           * of our objContext instance. Let's ignore this exception and get out of here */
+        }
       }
       catch (Exception e)
       {
         if (OnUnregisterException == null)
           return;
-        OnUnregisterException(this, e, typeName, obj);
+        OnUnregisterException(this, e, handleClass, obj);
       }
     }
 
-    public void Unregister(string typeName, THandleType obj)
+    public void Unregister(THandleClass handleClass, THandle obj)
     {
-      _unregistrationAgent.Enqueue(typeName, obj);
+      _unregistrationAgent.Enqueue(handleClass, obj);
     }
 
-    private void GetObjectsContexts(ClassNameHandlePair obj1,
-                                    ClassNameHandlePair obj2,
-                                    out UnmanagedObjectContext<THandleType> context1,
-                                    out UnmanagedObjectContext<THandleType> context2)
+    private void AddDependency(UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
+                               Tuple<THandleClass, THandle> dep)
     {
-      if (!_trackedObjects.TryGetValue(obj1, out context1))
-        throw new EObjectNotFound<THandleType>(obj1.Item1, obj1.Item2);
-      if (!_trackedObjects.TryGetValue(obj2, out context2))
-        throw new EObjectNotFound<THandleType>(obj2.Item1, obj2.Item2);
-    }
-
-    private void AddDependency(UnmanagedObjectContext<THandleType> trackedObjectContext,
-                               Tuple<string, THandleType> dep)
-    {
-      UnmanagedObjectContext<THandleType> depContext;
+      UnmanagedObjectContext<THandleClass, THandle> depContext;
       if (!_trackedObjects.TryGetValue(dep, out depContext))
-        throw new EObjectNotFound<THandleType>(dep.Item1, dep.Item2);
+        throw new EObjectNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
+      if(trackedObjectContext.Dependencies == null)
+        trackedObjectContext.InitDependencies();
       if (trackedObjectContext.Dependencies.Add(dep.Item1, dep.Item2))
         depContext.AddRefCount();
     }
 
-    public void AddDependency(string typeName, THandleType obj, string depTypeName, THandleType dep)
+    private void RemoveDependency(THandleClass handleClass, THandle obj,
+                                 UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
+                                 Tuple<THandleClass, THandle> dep)
     {
-      var objTuple = new ClassNameHandlePair(typeName, obj);
-      UnmanagedObjectContext<THandleType> objContext;
-      if (!_trackedObjects.TryGetValue(objTuple, out objContext))
-        throw new EObjectNotFound<THandleType>(typeName, obj);
-      AddDependency(objContext, new ClassNameHandlePair(depTypeName, dep));
+
+      if (trackedObjectContext.Dependencies == null ||
+          !trackedObjectContext.Dependencies.Remove(dep.Item1, dep.Item2))
+        throw new EDependencyNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
+      Unregister(dep.Item1, dep.Item2);
     }
 
-    public void RemoveDependency(string typeName, THandleType obj, string depTypeName, THandleType dep)
+    public void AddDependency(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
     {
-      var objTuple = new ClassNameHandlePair(typeName, obj);
-      var depTuple = new ClassNameHandlePair(depTypeName, dep);
-      UnmanagedObjectContext<THandleType> objContext;
-      UnmanagedObjectContext<THandleType> depContext;
-      GetObjectsContexts(objTuple, depTuple, out objContext, out depContext);
-      if (!objContext.Dependencies.Remove(depTuple.Item1, depTuple.Item2))
-        throw new EDependencyNotFound<THandleType>(depTypeName, dep);
-      Unregister(depTypeName, dep);
+      var objTuple = new HandleContainer(handleClass, obj);
+      UnmanagedObjectContext<THandleClass, THandle> objContext;
+      if (!_trackedObjects.TryGetValue(objTuple, out objContext))
+        throw new EObjectNotFound<THandleClass, THandle>(handleClass, obj);
+      AddDependency(objContext, new HandleContainer(depHandleClass, dep));
+    }
+
+    public void RemoveDependency(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
+    {
+      var objTuple = new HandleContainer(handleClass, obj);
+      UnmanagedObjectContext<THandleClass, THandle> objContext;
+      if (!_trackedObjects.TryGetValue(objTuple, out objContext))
+        throw new EObjectNotFound<THandleClass, THandle>(handleClass, obj);
+      var depTuple = new HandleContainer(depHandleClass, dep);
+      RemoveDependency(handleClass, obj, objContext, depTuple);
     }
   }
 }

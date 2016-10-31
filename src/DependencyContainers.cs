@@ -5,28 +5,22 @@ using System.Collections.Generic;
 
 namespace GChelpers
 {
-  public class ConcurrentDependencies<THandleType> : IEnumerable<Tuple<string, THandleType>>
+  public class ConcurrentDependencies<THandleClass, THandle> : IEnumerable<Tuple<THandleClass, THandle>>
   {
-    private readonly ConcurrentDictionary<Tuple<string, THandleType>, int> _container = new ConcurrentDictionary<Tuple<string, THandleType>, int>();
+    private readonly ConcurrentDictionary<Tuple<THandleClass, THandle>, int> _container = new ConcurrentDictionary<Tuple<THandleClass, THandle>, int>();
 
-    public bool Add(string typeName, THandleType dep)
+    public bool Add(THandleClass handleClass, THandle dep)
     {
-      return _container.TryAdd(new Tuple<string, THandleType>(typeName, dep), 0);
+      return _container.TryAdd(new Tuple<THandleClass, THandle>(handleClass, dep), 0);
     }
 
-    public bool Remove(string typeName, THandleType dep)
-    {
-      int dummy;
-      return _container.TryRemove(new Tuple<string, THandleType>(typeName, dep), out dummy);
-    }
-
-    public bool Find(string typeName, THandleType dep)
+    public bool Remove(THandleClass handleClass, THandle dep)
     {
       int dummy;
-      return _container.TryGetValue(new Tuple<string, THandleType>(typeName, dep), out dummy);
+      return _container.TryRemove(new Tuple<THandleClass, THandle>(handleClass, dep), out dummy);
     }
 
-    public IEnumerator<Tuple<string, THandleType>> GetEnumerator()
+    public IEnumerator<Tuple<THandleClass, THandle>> GetEnumerator()
     {
       foreach (var dep in _container)
         yield return dep.Key;

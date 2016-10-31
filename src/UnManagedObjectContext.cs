@@ -2,21 +2,18 @@ using System.Threading;
 
 namespace GChelpers
 {
-  public class UnmanagedObjectContext<THandleType>
+  public class UnmanagedObjectContext<THandleClass, THandle>
   {
-    public delegate void DestroyOrFreeUnmanagedObjectDelegate(THandleType obj);
+    public delegate void DestroyHandleDelegate(THandle obj);
 
     private int _refCount = 1;
-    public DestroyOrFreeUnmanagedObjectDelegate DestroyObj { get; set; }
-    public DestroyOrFreeUnmanagedObjectDelegate FreeObject { get; set; }
-    public ConcurrentDependencies<THandleType> Dependencies { get; set; }
+    public DestroyHandleDelegate DestroyHandle { get; set; }
+    public ConcurrentDependencies<THandleClass, THandle> Dependencies { get; set; }
 
-    public void DestroyAndFree(THandleType obj)
+    public void DestroyAndFree(THandle obj)
     {
-      if (DestroyObj != null)
-        DestroyObj.Invoke(obj);
-      if (FreeObject != null)
-        FreeObject.Invoke(obj);
+      if (DestroyHandle != null)
+        DestroyHandle(obj);
     }
 
     public int AddRefCount()
@@ -27,6 +24,11 @@ namespace GChelpers
     public int ReleaseRefCount()
     {
       return Interlocked.Decrement(ref _refCount);
+    }
+
+    public void InitDependencies()
+    {
+      Dependencies = new ConcurrentDependencies<THandleClass, THandle>();
     }
   }
 }

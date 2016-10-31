@@ -7,7 +7,7 @@ namespace gc_helper_tests
 {
   public class TesterClass
   {
-    public static readonly UnmanagedObjectGCHelper<IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectGCHelper<IntPtr>();
+    public static readonly UnmanagedObjectGCHelper<string, IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectGCHelper<string, IntPtr>();
     public bool destroyed;
     public IntPtr destroyedHandle;
     private static IntPtr _nextHandle = IntPtr.Zero;
@@ -19,7 +19,7 @@ namespace gc_helper_tests
       destroyedHandle = obj;
     }
 
-    public UnmanagedObjectContext<IntPtr>.DestroyOrFreeUnmanagedObjectDelegate GetDestroyDelegate()
+    public UnmanagedObjectContext<string, IntPtr>.DestroyHandleDelegate GetDestroyDelegate()
     {
       return DestroyObject;
     }
@@ -28,12 +28,12 @@ namespace gc_helper_tests
     {
       _nextHandle = IntPtr.Add(_nextHandle, 1);
       Handle = _nextHandle;
-      var _deps = new ConcurrentDependencies<IntPtr>();
+      var _deps = new ConcurrentDependencies<string, IntPtr>();
       foreach (var dep in deps)
       {
         _deps.Add(typeof(TesterClass).Name, dep);
       }
-      UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, Handle, DestroyObject, null, _deps);
+      UnmanagedObjectLifecycle.Register(typeof(TesterClass).Name, Handle, DestroyObject, _deps);
     }
 
     public void Dispose()
@@ -45,7 +45,7 @@ namespace gc_helper_tests
   public class UnamangedObjectLifecycleTests
   {
     private Exception _raisedException;
-    public void ExceptionUnregisteringHandle(UnmanagedObjectGCHelper<IntPtr> obj, Exception exception,
+    public void ExceptionUnregisteringHandle(UnmanagedObjectGCHelper<string, IntPtr> obj, Exception exception,
       string typeName, IntPtr handle)
     {
       _raisedException = exception;
@@ -91,7 +91,7 @@ namespace gc_helper_tests
       TesterClass.UnmanagedObjectLifecycle.Unregister("AnotherClass", obj.Handle);
       Thread.Yield();
       Thread.Sleep(200);
-      Assert.IsTrue(_raisedException is EObjectNotFound<IntPtr>);
+      Assert.IsTrue(_raisedException is EObjectNotFound<string, IntPtr>);
       _raisedException = null;
       obj.Dispose();
       Thread.Yield();
@@ -169,7 +169,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    [ExpectedException(typeof(EDependencyNotFound<IntPtr>))]
+    [ExpectedException(typeof(EDependencyNotFound<string, IntPtr>))]
     public void RemoveNotExistingDependency_Fails()
     {
       var obj = new TesterClass(new IntPtr[] { });
@@ -178,7 +178,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    [ExpectedException(typeof(EObjectNotFound<IntPtr>))]
+    [ExpectedException(typeof(EObjectNotFound<string, IntPtr>))]
     public void NonExistingDependency_Fails()
     {
       // ReSharper disable once ObjectCreationAsStatement
@@ -194,7 +194,7 @@ namespace gc_helper_tests
       TesterClass.UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, obj.Handle);
       Thread.Yield();
       Thread.Sleep(200);
-      Assert.IsTrue(_raisedException is EObjectNotFound<IntPtr>);
+      Assert.IsTrue(_raisedException is EObjectNotFound<string, IntPtr>);
       _raisedException = null;
     }
 

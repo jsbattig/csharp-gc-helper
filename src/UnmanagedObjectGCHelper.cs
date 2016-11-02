@@ -31,6 +31,7 @@ namespace GChelpers
 
     public delegate void ExceptionDelegate(UnmanagedObjectGCHelper<THandleClass, THandle> obj, Exception exception, THandleClass handleClass, THandle handle);
     private class TrackedObjects : ConcurrentDictionary<Tuple<THandleClass, THandle>, UnmanagedObjectContext<THandleClass, THandle>> { }
+    private bool _agentRunning;
     private readonly TrackedObjects _trackedObjects = new TrackedObjects();
     private readonly UnregistrationAgent<THandleClass, THandle> _unregistrationAgent;
 
@@ -39,6 +40,7 @@ namespace GChelpers
     public UnmanagedObjectGCHelper()
     {
       _unregistrationAgent = new UnregistrationAgent<THandleClass, THandle>(this);
+      _agentRunning = true;
     }
 
     private void Dispose(bool disposing)
@@ -55,6 +57,7 @@ namespace GChelpers
 
     public void StopAgent()
     {
+      _agentRunning = false;
       _unregistrationAgent.Stop();
     }
 
@@ -150,7 +153,13 @@ namespace GChelpers
 
     public void Unregister(THandleClass handleClass, THandle obj)
     {
-      _unregistrationAgent.Enqueue(handleClass, obj);
+      /* the following code as regards to _agentRunning is not thread safe. But I don't want we pay the cost of a lock operation here
+       * not even a spinlock call. We want Unregister to be as fast as possible. Worst thing that can happen we may leak some unmanaged object
+       * that gets inserted into _unregistrationAgent queue and never destroyed */
+      if (_agentRunning)
+        _unregistrationAgent.Enqueue(handleClass, obj);
+      else
+        RemoveAndDestroyHandle(handleClass, obj);
     }
 
     private void AddDependency(UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,

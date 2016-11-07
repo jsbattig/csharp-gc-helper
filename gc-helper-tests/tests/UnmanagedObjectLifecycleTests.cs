@@ -7,6 +7,7 @@ namespace gc_helper_tests
 {
   public class TesterClass
   {
+    public static bool dummyCalled;
     public static readonly UnmanagedObjectGCHelper<string, IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectGCHelper<string, IntPtr>();
     public bool destroyed;
     public IntPtr destroyedHandle;
@@ -39,6 +40,11 @@ namespace gc_helper_tests
     public void Dispose()
     {
       UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, Handle);
+    }
+
+    public void DummyCall()
+    {
+      dummyCalled = true;
     }
   }
 
@@ -81,6 +87,91 @@ namespace gc_helper_tests
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
     }
+
+#if RELEASE
+    internal class LittleObject
+    {
+      public static bool destroyedHandle;
+      public IntPtr handle;
+      public static readonly UnmanagedObjectGCHelper<int, IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectGCHelper<int, IntPtr>();
+      public LittleObject()
+      {
+        handle = IntPtr.Zero;
+        handle = IntPtr.Add(handle, 1);
+        UnmanagedObjectLifecycle.Register(0, handle, DestroyObject);
+      }
+
+      ~LittleObject()
+      {
+        UnmanagedObjectLifecycle.Unregister(0, handle);
+        handle = IntPtr.Zero;
+      }
+
+      public static void DestroyObject(IntPtr handle)
+      {
+        destroyedHandle = true;
+      }
+
+      public void Dummy()
+      {
+        /* When compiled in Release mode, object will get garbage collected even within
+           a call to a method of the object itself.
+           We need to use GC.KeepAlive() to avoid this situation */
+        GC.Collect();
+        Thread.Sleep(1000);
+        Assert.IsTrue(LittleObject.destroyedHandle);
+      }
+
+      public void DummyWithKeepAlive()
+      {
+        /* When compiled in Release mode, object will get garbage collected even within
+           a call to a method of the object itself.
+           We need to use GC.KeepAlive() to avoid this situation */
+        GC.Collect();
+        Thread.Sleep(1000);
+        Assert.IsFalse(LittleObject.destroyedHandle);
+        GC.KeepAlive(this);
+      }
+
+      public void DummyReferencedFromTheOutside()
+      {
+        /* When compiled in Release mode, object will get garbage collected even within
+           a call to a method of the object itself.
+           We need to use GC.KeepAlive() to avoid this situation */
+        GC.Collect();
+        Thread.Sleep(1000);
+        Assert.IsFalse(LittleObject.destroyedHandle);
+      }
+    }
+
+    [Test]
+    public void ObjectLifecycleWithoutGCKeepAlive_Success()
+    {
+      LittleObject.destroyedHandle = false;
+      var obj = new LittleObject();
+      Assert.AreNotEqual(IntPtr.Zero, obj.handle);
+      obj.Dummy();
+    }
+
+    [Test]
+    public void ObjectLifecycleWithGCKeepAlive_Success()
+    {
+      LittleObject.destroyedHandle = false;
+      var obj = new LittleObject();
+      Assert.AreNotEqual(IntPtr.Zero, obj.handle);
+      obj.DummyWithKeepAlive();
+    }
+
+    [Test]
+    public void ObjectLifecycleCallDummyStillReferenced_Success()
+    {
+      LittleObject.destroyedHandle = false;
+      var obj = new LittleObject();
+      Assert.AreNotEqual(IntPtr.Zero, obj.handle);
+      obj.DummyReferencedFromTheOutside();
+      obj.Dummy();
+    }
+#endif
 
     [Test]
     public void BasicTestTwoDifferentTypeNames_Success()

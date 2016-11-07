@@ -135,9 +135,6 @@ namespace gc_helper_tests
 
       public void DummyReferencedFromTheOutside()
       {
-        /* When compiled in Release mode, object will get garbage collected even within
-           a call to a method of the object itself.
-           We need to use GC.KeepAlive() to avoid this situation */
         GC.Collect();
         Thread.Sleep(1000);
         Assert.IsFalse(LittleObject.destroyedHandle);

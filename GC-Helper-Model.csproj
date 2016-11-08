@@ -35,7 +35,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="src\ParentCollection.cs" />
+    <Compile Include="src\HandleCollection.cs" />
     <Compile Include="src\UnmanagedObjectContext.cs" />
     <Compile Include="src\UnmanagedObjectGCHelper.cs" />
     <Compile Include="src\UnmanagedObjectGCHelperExceptions.cs" />

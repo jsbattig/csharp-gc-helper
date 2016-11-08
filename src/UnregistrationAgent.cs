@@ -54,7 +54,7 @@ namespace GChelpers
           _eventWaitHandle.WaitOne();
           continue;
         }
-        _handleRemover.RemoveAndDestroyHandle(dequeuedHandleContainer.Item1, dequeuedHandleContainer.Item2);
+        _handleRemover.RemoveAndCallDestroyHandleDelegate(dequeuedHandleContainer.Item1, dequeuedHandleContainer.Item2);
       }
     }
 

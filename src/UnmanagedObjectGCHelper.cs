@@ -4,9 +4,9 @@ using System.Threading;
 
 namespace GChelpers
 {
-  internal interface IHandleRemover<in THandleClass, in THandle>
+  public interface IHandleRemover<in THandleClass, in THandle>
   {
-    void RemoveAndDestroyHandle(THandleClass handleClass, THandle obj);
+    void RemoveAndCallDestroyHandleDelegate(THandleClass handleClass, THandle obj);
   }
 
   /// <summary>
@@ -31,6 +31,7 @@ namespace GChelpers
 
     public delegate void ExceptionDelegate(UnmanagedObjectGCHelper<THandleClass, THandle> obj, Exception exception, THandleClass handleClass, THandle handle);
     private class TrackedObjects : ConcurrentDictionary<Tuple<THandleClass, THandle>, UnmanagedObjectContext<THandleClass, THandle>> { }
+    private bool _agentRunning;
     private readonly TrackedObjects _trackedObjects = new TrackedObjects();
     private readonly UnregistrationAgent<THandleClass, THandle> _unregistrationAgent;
 
@@ -39,6 +40,7 @@ namespace GChelpers
     public UnmanagedObjectGCHelper()
     {
       _unregistrationAgent = new UnregistrationAgent<THandleClass, THandle>(this);
+      _agentRunning = true;
     }
 
     private void Dispose(bool disposing)
@@ -55,26 +57,27 @@ namespace GChelpers
 
     public void StopAgent()
     {
+      _agentRunning = false;
       _unregistrationAgent.Stop();
     }
 
     public void Register(THandleClass handleClass, THandle obj,
                          UnmanagedObjectContext<THandleClass, THandle>.DestroyHandleDelegate destroyHandle = null,
-                         ConcurrentDependencies<THandleClass, THandle> dependencies = null)
+                         HandleCollection<THandleClass, THandle> parentCollection = null)
     {
       var handleContainer = new HandleContainer(handleClass, obj);
       var trackedObject = new UnmanagedObjectContext<THandleClass, THandle>
       {
         DestroyHandle = destroyHandle,
-        Dependencies = dependencies
+        parentCollection = parentCollection
       };
       do
       {
         if (_trackedObjects.TryAdd(handleContainer, trackedObject))
         {
-          if (dependencies == null)
+          if (parentCollection == null)
             return;
-          foreach (var dep in trackedObject.Dependencies)
+          foreach (var dep in trackedObject.parentCollection)
           {
             UnmanagedObjectContext<THandleClass, THandle> depContext;
             if (!_trackedObjects.TryGetValue(dep, out depContext))
@@ -107,13 +110,13 @@ namespace GChelpers
         trackedObject.DestroyHandle = destroyHandle;
         break;
       } while (true);
-      if (dependencies == null)
+      if (parentCollection == null)
         return;
-      foreach (var dep in dependencies)
-        AddDependency(trackedObject, dep);
+      foreach (var dep in parentCollection)
+        AddParent(trackedObject, dep);
     }
 
-    public void RemoveAndDestroyHandle(THandleClass handleClass, THandle obj)
+    public void RemoveAndCallDestroyHandleDelegate(THandleClass handleClass, THandle obj)
     {
       try
       {
@@ -126,18 +129,18 @@ namespace GChelpers
           return; // Object still alive
         if (newRefCount < 0)
           throw new EInvalidRefCount<THandleClass, THandle>(handleClass, obj, newRefCount);
-        if (!_trackedObjects.TryRemove(objTuple, out objContext))
-          throw new EFailedObjectRemoval<THandleClass, THandle>(objTuple.Item1, objTuple.Item2);
-        objContext.DestroyAndFree(obj);
         try
         {
-          foreach (var dep in objContext.Dependencies)
-            RemoveDependency(handleClass, obj, objContext, dep);
+          objContext.CallDestroyHandleDelegate(obj);
+          if (objContext.parentCollection == null)
+            return;
+          foreach (var dep in objContext.parentCollection)
+            RemoveParent(handleClass, obj, objContext, dep);
         }
-        catch (EDependencyNotFound<THandleClass, THandle>)
+        finally
         {
-          /* This is likely caused because concurrently there was a call to Register who initialized _dependencies field
-           * of our objContext instance. Let's ignore this exception and get out of here */
+          if (!_trackedObjects.TryRemove(objTuple, out objContext))
+            throw new EFailedObjectRemoval<THandleClass, THandle>(objTuple.Item1, objTuple.Item2);
         }
       }
       catch (Exception e)
@@ -150,49 +153,55 @@ namespace GChelpers
 
     public void Unregister(THandleClass handleClass, THandle obj)
     {
-      _unregistrationAgent.Enqueue(handleClass, obj);
+      /* the following code as regards to _agentRunning is not thread safe. But I don't want we pay the cost of a lock operation here
+       * not even a spinlock call. We want Unregister to be as fast as possible. Worst thing that can happen we may leak some unmanaged object
+       * that gets inserted into _unregistrationAgent queue and never destroyed */
+      if (_agentRunning)
+        _unregistrationAgent.Enqueue(handleClass, obj);
+      else
+        RemoveAndCallDestroyHandleDelegate(handleClass, obj);
     }
 
-    private void AddDependency(UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
+    private void AddParent(UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
                                Tuple<THandleClass, THandle> dep)
     {
       UnmanagedObjectContext<THandleClass, THandle> depContext;
       if (!_trackedObjects.TryGetValue(dep, out depContext))
         throw new EObjectNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
-      if(trackedObjectContext.Dependencies == null)
-        trackedObjectContext.InitDependencies();
-      if (trackedObjectContext.Dependencies.Add(dep.Item1, dep.Item2))
+      if(trackedObjectContext.parentCollection == null)
+        trackedObjectContext.InitParentCollection();
+      if (trackedObjectContext.parentCollection.Add(dep.Item1, dep.Item2))
         depContext.AddRefCount();
     }
 
-    private void RemoveDependency(THandleClass handleClass, THandle obj,
+    private void RemoveParent(THandleClass handleClass, THandle obj,
                                  UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
                                  Tuple<THandleClass, THandle> dep)
     {
 
-      if (trackedObjectContext.Dependencies == null ||
-          !trackedObjectContext.Dependencies.Remove(dep.Item1, dep.Item2))
-        throw new EDependencyNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
+      if (trackedObjectContext.parentCollection == null ||
+          !trackedObjectContext.parentCollection.Remove(dep.Item1, dep.Item2))
+        throw new EParentNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
       Unregister(dep.Item1, dep.Item2);
     }
 
-    public void AddDependency(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
+    public void AddParent(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
     {
       var objTuple = new HandleContainer(handleClass, obj);
       UnmanagedObjectContext<THandleClass, THandle> objContext;
       if (!_trackedObjects.TryGetValue(objTuple, out objContext))
         throw new EObjectNotFound<THandleClass, THandle>(handleClass, obj);
-      AddDependency(objContext, new HandleContainer(depHandleClass, dep));
+      AddParent(objContext, new HandleContainer(depHandleClass, dep));
     }
 
-    public void RemoveDependency(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
+    public void RemoveParent(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
     {
       var objTuple = new HandleContainer(handleClass, obj);
       UnmanagedObjectContext<THandleClass, THandle> objContext;
       if (!_trackedObjects.TryGetValue(objTuple, out objContext))
         throw new EObjectNotFound<THandleClass, THandle>(handleClass, obj);
       var depTuple = new HandleContainer(depHandleClass, dep);
-      RemoveDependency(handleClass, obj, objContext, depTuple);
+      RemoveParent(handleClass, obj, objContext, depTuple);
     }
   }
 }

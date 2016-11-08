@@ -7,6 +7,7 @@ namespace gc_helper_tests
 {
   public class TesterClass
   {
+    public static bool dummyCalled;
     public static readonly UnmanagedObjectGCHelper<string, IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectGCHelper<string, IntPtr>();
     public bool destroyed;
     public IntPtr destroyedHandle;
@@ -28,7 +29,7 @@ namespace gc_helper_tests
     {
       _nextHandle = IntPtr.Add(_nextHandle, 1);
       Handle = _nextHandle;
-      var _deps = new ConcurrentDependencies<string, IntPtr>();
+      var _deps = new HandleCollection<string, IntPtr>();
       foreach (var dep in deps)
       {
         _deps.Add(typeof(TesterClass).Name, dep);
@@ -39,6 +40,11 @@ namespace gc_helper_tests
     public void Dispose()
     {
       UnmanagedObjectLifecycle.Unregister(typeof(TesterClass).Name, Handle);
+    }
+
+    public void DummyCall()
+    {
+      dummyCalled = true;
     }
   }
 
@@ -81,6 +87,88 @@ namespace gc_helper_tests
       Assert.IsTrue(obj.destroyed);
       Assert.AreEqual(obj.Handle, obj.destroyedHandle);
     }
+
+#if RELEASE
+    internal class LittleObject
+    {
+      public static bool destroyedHandle;
+      public IntPtr handle;
+      public static readonly UnmanagedObjectGCHelper<int, IntPtr> UnmanagedObjectLifecycle = new UnmanagedObjectGCHelper<int, IntPtr>();
+      public LittleObject()
+      {
+        handle = IntPtr.Zero;
+        handle = IntPtr.Add(handle, 1);
+        UnmanagedObjectLifecycle.Register(0, handle, DestroyObject);
+      }
+
+      ~LittleObject()
+      {
+        UnmanagedObjectLifecycle.Unregister(0, handle);
+        handle = IntPtr.Zero;
+      }
+
+      public static void DestroyObject(IntPtr handle)
+      {
+        destroyedHandle = true;
+      }
+
+      public void Dummy()
+      {
+        /* When compiled in Release mode, object will get garbage collected even within
+           a call to a method of the object itself.
+           We need to use GC.KeepAlive() to avoid this situation */
+        GC.Collect();
+        Thread.Sleep(1000);
+        Assert.IsTrue(destroyedHandle);
+      }
+
+      public void DummyWithKeepAlive()
+      {
+        /* When compiled in Release mode, object will get garbage collected even within
+           a call to a method of the object itself.
+           We need to use GC.KeepAlive() to avoid this situation */
+        GC.Collect();
+        Thread.Sleep(1000);
+        Assert.IsFalse(destroyedHandle);
+        GC.KeepAlive(this);
+      }
+
+      public void DummyReferencedFromTheOutside()
+      {
+        GC.Collect();
+        Thread.Sleep(1000);
+        Assert.IsFalse(destroyedHandle);
+      }
+    }
+
+    [Test]
+    public void ObjectLifecycleWithoutGCKeepAlive_Success()
+    {
+      LittleObject.destroyedHandle = false;
+      var obj = new LittleObject();
+      Assert.AreNotEqual(IntPtr.Zero, obj.handle);
+      obj.Dummy();
+    }
+
+    [Test]
+    public void ObjectLifecycleWithGCKeepAlive_Success()
+    {
+      LittleObject.destroyedHandle = false;
+      var obj = new LittleObject();
+      Assert.AreNotEqual(IntPtr.Zero, obj.handle);
+      obj.DummyWithKeepAlive();
+    }
+
+    [Test]
+    public void ObjectLifecycleCallDummyStillReferenced_Success()
+    {
+      LittleObject.destroyedHandle = false;
+      var obj = new LittleObject();
+      Assert.AreNotEqual(IntPtr.Zero, obj.handle);
+      obj.DummyReferencedFromTheOutside();
+      obj.Dummy();
+    }
+#endif
 
     [Test]
     public void BasicTestTwoDifferentTypeNames_Success()
@@ -128,7 +216,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void SimpleDependencyDisposeLeafLast_Success()
+    public void SimpleParentDisposeLeafLast_Success()
     {
       var obj = new TesterClass(new IntPtr[] {});
       var obj2 = new TesterClass(new[] { obj.Handle });
@@ -147,7 +235,7 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void SimpleDependencyDisposeByRemovingDependency_Success()
+    public void SimpleParentDisposeByRemovingParent_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
@@ -155,7 +243,7 @@ namespace gc_helper_tests
       Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveParent(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj.Handle);
       Thread.Yield();
       Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
@@ -169,17 +257,17 @@ namespace gc_helper_tests
     }
 
     [Test]
-    [ExpectedException(typeof(EDependencyNotFound<string, IntPtr>))]
-    public void RemoveNotExistingDependency_Fails()
+    [ExpectedException(typeof(EParentNotFound<string, IntPtr>))]
+    public void RemoveNotExistingParent_Fails()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveParent(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
     }
 
     [Test]
     [ExpectedException(typeof(EObjectNotFound<string, IntPtr>))]
-    public void NonExistingDependency_Fails()
+    public void NonExistingParent_Fails()
     {
       // ReSharper disable once ObjectCreationAsStatement
       new TesterClass(new[] { IntPtr.Zero });
@@ -348,12 +436,12 @@ namespace gc_helper_tests
     }
 
     [Test]
-    public void CircularDependenciesDisposeAllRemoveOneDependency_Success()
+    public void CircularDependenciesDisposeAllRemoveOneParent_Success()
     {
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
       var obj3 = new TesterClass(new[] { obj2.Handle });
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddParent(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular parent
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
@@ -365,8 +453,8 @@ namespace gc_helper_tests
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      /* Only way to get objects destroyed is by removing one dependency to destroy the circle */
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
+      /* Only way to get objects destroyed is by removing one parent to destroy the circle */
+      TesterClass.UnmanagedObjectLifecycle.RemoveParent(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
       Thread.Yield();
       Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
@@ -383,9 +471,9 @@ namespace gc_helper_tests
       var obj = new TesterClass(new IntPtr[] { });
       var obj2 = new TesterClass(new[] { obj.Handle });
       var obj3 = new TesterClass(new[] { obj2.Handle, obj.Handle });
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular dependency
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle); // Circular dependency
-      TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular dependency
+      TesterClass.UnmanagedObjectLifecycle.AddParent(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular parent
+      TesterClass.UnmanagedObjectLifecycle.AddParent(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle); // Circular parent
+      TesterClass.UnmanagedObjectLifecycle.AddParent(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle); // Circular parent
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
@@ -406,19 +494,19 @@ namespace gc_helper_tests
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveParent(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj3.Handle);
       Thread.Yield();
       Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveParent(typeof(TesterClass).Name, obj.Handle, typeof(TesterClass).Name, obj2.Handle);
       Thread.Yield();
       Thread.Sleep(200);
       Assert.IsFalse(obj.destroyed);
       Assert.IsFalse(obj2.destroyed);
       Assert.IsFalse(obj3.destroyed);
-      TesterClass.UnmanagedObjectLifecycle.RemoveDependency(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle);
+      TesterClass.UnmanagedObjectLifecycle.RemoveParent(typeof(TesterClass).Name, obj2.Handle, typeof(TesterClass).Name, obj3.Handle);
       Thread.Yield();
       Thread.Sleep(200);
       Assert.IsTrue(obj.destroyed);
@@ -441,8 +529,8 @@ namespace gc_helper_tests
       for (var i = 1; i < countThreads; i++)
         for (var j = 1; j < countObjects; j++)
         {
-          TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, objsArray[i - 1, j].Handle, typeof(TesterClass).Name, objsArray[i, j].Handle);
-          TesterClass.UnmanagedObjectLifecycle.AddDependency(typeof(TesterClass).Name, objsArray[i, j].Handle, typeof(TesterClass).Name, objsArray[i - 1, j - 1].Handle);
+          TesterClass.UnmanagedObjectLifecycle.AddParent(typeof(TesterClass).Name, objsArray[i - 1, j].Handle, typeof(TesterClass).Name, objsArray[i, j].Handle);
+          TesterClass.UnmanagedObjectLifecycle.AddParent(typeof(TesterClass).Name, objsArray[i, j].Handle, typeof(TesterClass).Name, objsArray[i - 1, j - 1].Handle);
         }
       var threads = new Thread[countThreads];
       for (var threadNo = 0; threadNo < countThreads; threadNo++)

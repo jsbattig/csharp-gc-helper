@@ -5,7 +5,7 @@ using System.Collections.Generic;
 
 namespace GChelpers
 {
-  public class ConcurrentDependencies<THandleClass, THandle> : IEnumerable<Tuple<THandleClass, THandle>>
+  public class HandleCollection<THandleClass, THandle> : IEnumerable<Tuple<THandleClass, THandle>>
   {
     private readonly ConcurrentDictionary<Tuple<THandleClass, THandle>, int> _container = new ConcurrentDictionary<Tuple<THandleClass, THandle>, int>();
 

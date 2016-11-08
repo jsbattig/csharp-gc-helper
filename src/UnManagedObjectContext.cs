@@ -8,9 +8,9 @@ namespace GChelpers
 
     private int _refCount = 1;
     public DestroyHandleDelegate DestroyHandle { get; set; }
-    public ConcurrentDependencies<THandleClass, THandle> Dependencies { get; set; }
+    public HandleCollection<THandleClass, THandle> parentCollection { get; set; }
 
-    public void DestroyAndFree(THandle obj)
+    public void CallDestroyHandleDelegate(THandle obj)
     {
       if (DestroyHandle != null)
         DestroyHandle(obj);
@@ -26,9 +26,9 @@ namespace GChelpers
       return Interlocked.Decrement(ref _refCount);
     }
 
-    public void InitDependencies()
+    public void InitParentCollection()
     {
-      Dependencies = new ConcurrentDependencies<THandleClass, THandle>();
+      parentCollection = new HandleCollection<THandleClass, THandle>();
     }
   }
 }

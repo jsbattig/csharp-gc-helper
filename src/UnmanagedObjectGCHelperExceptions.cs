@@ -30,14 +30,14 @@ namespace GChelpers
   }
 
   [Serializable]
-  public class EDependencyObjectNotFound<THandleClass, THandleType> : EObjectNotFound<THandleClass, THandleType>
+  public class EParentObjectNotFound<THandleClass, THandleType> : EObjectNotFound<THandleClass, THandleType>
   {
-    public EDependencyObjectNotFound(THandleClass handleClass, THandleType obj) : base(handleClass, obj) { }
+    public EParentObjectNotFound(THandleClass handleClass, THandleType obj) : base(handleClass, obj) { }
   }
 
   [Serializable]
-  public class EDependencyNotFound<THandleClass, THandleType> : EGChelper
+  public class EParentNotFound<THandleClass, THandleType> : EGChelper
   {
-    public EDependencyNotFound(THandleClass handleClass, THandleType obj) : base(string.Format("Dependency not found ({0} {1})", handleClass, obj)) { }
+    public EParentNotFound(THandleClass handleClass, THandleType obj) : base(string.Format("Dependency not found ({0} {1})", handleClass, obj)) { }
   }
 }

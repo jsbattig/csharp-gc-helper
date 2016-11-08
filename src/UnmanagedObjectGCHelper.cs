@@ -6,7 +6,7 @@ namespace GChelpers
 {
   public interface IHandleRemover<in THandleClass, in THandle>
   {
-    void RemoveAndDestroyHandle(THandleClass handleClass, THandle obj);
+    void RemoveAndCallDestroyHandleDelegate(THandleClass handleClass, THandle obj);
   }
 
   /// <summary>
@@ -63,21 +63,21 @@ namespace GChelpers
 
     public void Register(THandleClass handleClass, THandle obj,
                          UnmanagedObjectContext<THandleClass, THandle>.DestroyHandleDelegate destroyHandle = null,
-                         ConcurrentDependencies<THandleClass, THandle> dependencies = null)
+                         HandleCollection<THandleClass, THandle> parentCollection = null)
     {
       var handleContainer = new HandleContainer(handleClass, obj);
       var trackedObject = new UnmanagedObjectContext<THandleClass, THandle>
       {
         DestroyHandle = destroyHandle,
-        Dependencies = dependencies
+        parentCollection = parentCollection
       };
       do
       {
         if (_trackedObjects.TryAdd(handleContainer, trackedObject))
         {
-          if (dependencies == null)
+          if (parentCollection == null)
             return;
-          foreach (var dep in trackedObject.Dependencies)
+          foreach (var dep in trackedObject.parentCollection)
           {
             UnmanagedObjectContext<THandleClass, THandle> depContext;
             if (!_trackedObjects.TryGetValue(dep, out depContext))
@@ -110,13 +110,13 @@ namespace GChelpers
         trackedObject.DestroyHandle = destroyHandle;
         break;
       } while (true);
-      if (dependencies == null)
+      if (parentCollection == null)
         return;
-      foreach (var dep in dependencies)
-        AddDependency(trackedObject, dep);
+      foreach (var dep in parentCollection)
+        AddParent(trackedObject, dep);
     }
 
-    public void RemoveAndDestroyHandle(THandleClass handleClass, THandle obj)
+    public void RemoveAndCallDestroyHandleDelegate(THandleClass handleClass, THandle obj)
     {
       try
       {
@@ -131,11 +131,11 @@ namespace GChelpers
           throw new EInvalidRefCount<THandleClass, THandle>(handleClass, obj, newRefCount);
         try
         {
-          objContext.DestroyAndFree(obj);
-          if (objContext.Dependencies == null)
+          objContext.CallDestroyHandleDelegate(obj);
+          if (objContext.parentCollection == null)
             return;
-          foreach (var dep in objContext.Dependencies)
-            RemoveDependency(handleClass, obj, objContext, dep);
+          foreach (var dep in objContext.parentCollection)
+            RemoveParent(handleClass, obj, objContext, dep);
         }
         finally
         {
@@ -159,49 +159,49 @@ namespace GChelpers
       if (_agentRunning)
         _unregistrationAgent.Enqueue(handleClass, obj);
       else
-        RemoveAndDestroyHandle(handleClass, obj);
+        RemoveAndCallDestroyHandleDelegate(handleClass, obj);
     }
 
-    private void AddDependency(UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
+    private void AddParent(UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
                                Tuple<THandleClass, THandle> dep)
     {
       UnmanagedObjectContext<THandleClass, THandle> depContext;
       if (!_trackedObjects.TryGetValue(dep, out depContext))
         throw new EObjectNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
-      if(trackedObjectContext.Dependencies == null)
-        trackedObjectContext.InitDependencies();
-      if (trackedObjectContext.Dependencies.Add(dep.Item1, dep.Item2))
+      if(trackedObjectContext.parentCollection == null)
+        trackedObjectContext.InitParentCollection();
+      if (trackedObjectContext.parentCollection.Add(dep.Item1, dep.Item2))
         depContext.AddRefCount();
     }
 
-    private void RemoveDependency(THandleClass handleClass, THandle obj,
+    private void RemoveParent(THandleClass handleClass, THandle obj,
                                  UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
                                  Tuple<THandleClass, THandle> dep)
     {
 
-      if (trackedObjectContext.Dependencies == null ||
-          !trackedObjectContext.Dependencies.Remove(dep.Item1, dep.Item2))
-        throw new EDependencyNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
+      if (trackedObjectContext.parentCollection == null ||
+          !trackedObjectContext.parentCollection.Remove(dep.Item1, dep.Item2))
+        throw new EParentNotFound<THandleClass, THandle>(dep.Item1, dep.Item2);
       Unregister(dep.Item1, dep.Item2);
     }
 
-    public void AddDependency(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
+    public void AddParent(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
     {
       var objTuple = new HandleContainer(handleClass, obj);
       UnmanagedObjectContext<THandleClass, THandle> objContext;
       if (!_trackedObjects.TryGetValue(objTuple, out objContext))
         throw new EObjectNotFound<THandleClass, THandle>(handleClass, obj);
-      AddDependency(objContext, new HandleContainer(depHandleClass, dep));
+      AddParent(objContext, new HandleContainer(depHandleClass, dep));
     }
 
-    public void RemoveDependency(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
+    public void RemoveParent(THandleClass handleClass, THandle obj, THandleClass depHandleClass, THandle dep)
     {
       var objTuple = new HandleContainer(handleClass, obj);
       UnmanagedObjectContext<THandleClass, THandle> objContext;
       if (!_trackedObjects.TryGetValue(objTuple, out objContext))
         throw new EObjectNotFound<THandleClass, THandle>(handleClass, obj);
       var depTuple = new HandleContainer(depHandleClass, dep);
-      RemoveDependency(handleClass, obj, objContext, depTuple);
+      RemoveParent(handleClass, obj, objContext, depTuple);
     }
   }
 }

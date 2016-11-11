@@ -31,7 +31,7 @@ namespace GChelpers
 
     public delegate void ExceptionDelegate(UnmanagedObjectGCHelper<THandleClass, THandle> obj, Exception exception, THandleClass handleClass, THandle handle);
     private class TrackedObjects : ConcurrentDictionary<Tuple<THandleClass, THandle>, UnmanagedObjectContext<THandleClass, THandle>> { }
-    private bool _agentRunning;
+    private volatile bool _agentRunning;
     private readonly TrackedObjects _trackedObjects = new TrackedObjects();
     private readonly UnregistrationAgent<THandleClass, THandle> _unregistrationAgent;
 
@@ -65,6 +65,7 @@ namespace GChelpers
                          UnmanagedObjectContext<THandleClass, THandle>.DestroyHandleDelegate destroyHandle = null,
                          HandleCollection<THandleClass, THandle> parentCollection = null)
     {
+      UnmanagedObjectContext<THandleClass, THandle> existingContextObj;
       var handleContainer = new HandleContainer(handleClass, obj);
       var trackedObject = new UnmanagedObjectContext<THandleClass, THandle>
       {
@@ -73,7 +74,7 @@ namespace GChelpers
       };
       do
       {
-        if (_trackedObjects.TryAdd(handleContainer, trackedObject))
+        if ((existingContextObj = _trackedObjects.GetOrAdd(handleContainer, trackedObject)) == trackedObject)
         {
           if (parentCollection == null)
             return;
@@ -86,9 +87,6 @@ namespace GChelpers
           }
           return;
         }
-        UnmanagedObjectContext<THandleClass, THandle> existingContextObj;
-        if (!_trackedObjects.TryGetValue(handleContainer, out existingContextObj))
-          continue; /* Object just dropped and removed from another thread. Let's try again */
         /* If object already existed, under normal conditions AddRefCount() must return a value > 1.
          * If it returns <= 1 it means it just got decremented in another thread, reached zero and
          * it's about to be destroyed. So we will have to wait for that to happen and try again our
@@ -104,16 +102,15 @@ namespace GChelpers
             Thread.Yield();
           continue;
         }
-        trackedObject = existingContextObj;
         /* Object already exists, could be an stale object not yet garbage collected,
          * so we will set the new cleanup methods in place of the current ones */
-        trackedObject.DestroyHandle = destroyHandle;
+        existingContextObj.DestroyHandle = destroyHandle;
+        if (parentCollection == null)
+          return;
         break;
       } while (true);
-      if (parentCollection == null)
-        return;
       foreach (var dep in parentCollection)
-        AddParent(trackedObject, dep);
+        AddParent(existingContextObj, dep);
     }
 
     public void RemoveAndCallDestroyHandleDelegate(THandleClass handleClass, THandle obj)

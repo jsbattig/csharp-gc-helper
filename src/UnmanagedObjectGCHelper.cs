@@ -94,21 +94,18 @@ namespace GChelpers
         var newRefCount = existingContextObj.AddRefCount();
         if (newRefCount <= 0)
           throw new EInvalidRefCount<THandleClass, THandle>(handleClass, obj, newRefCount);
-        if (newRefCount == 1)
-        {
-          /* Object is getting removed in another thread. Let's spin while we wait for it to be gone
+        if (newRefCount > 1)
+          break;
+        /* Object is getting removed in another thread. Let's spin while we wait for it to be gone
            * from our _trackedObjects container */
-          while (_trackedObjects.TryGetValue(handleContainer, out existingContextObj))
-            Thread.Yield();
-          continue;
-        }
-        /* Object already exists, could be an stale object not yet garbage collected,
-         * so we will set the new cleanup methods in place of the current ones */
-        existingContextObj.DestroyHandle = destroyHandle;
-        if (parentCollection == null)
-          return;
-        break;
+        while (_trackedObjects.TryGetValue(handleContainer, out existingContextObj))
+          Thread.Yield();
       } while (true);
+      /* Object already exists, could be an stale object not yet garbage collected,
+       * so we will set the new cleanup methods in place of the current ones */
+      existingContextObj.DestroyHandle = destroyHandle;
+      if (parentCollection == null)
+        return;
       foreach (var dep in parentCollection)
         AddParent(existingContextObj, dep);
     }
@@ -132,7 +129,7 @@ namespace GChelpers
           if (objContext.parentCollection == null)
             return;
           foreach (var dep in objContext.parentCollection)
-            RemoveParent(handleClass, obj, objContext, dep);
+            RemoveParent(obj, objContext, dep);
         }
         finally
         {
@@ -171,9 +168,9 @@ namespace GChelpers
         depContext.AddRefCount();
     }
 
-    private void RemoveParent(THandleClass handleClass, THandle obj,
-                                 UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
-                                 Tuple<THandleClass, THandle> dep)
+    private void RemoveParent(THandle obj,
+                              UnmanagedObjectContext<THandleClass, THandle> trackedObjectContext,
+                              Tuple<THandleClass, THandle> dep)
     {
 
       if (trackedObjectContext.parentCollection == null ||
@@ -198,7 +195,7 @@ namespace GChelpers
       if (!_trackedObjects.TryGetValue(objTuple, out objContext))
         throw new EObjectNotFound<THandleClass, THandle>(handleClass, obj);
       var depTuple = new HandleContainer(depHandleClass, dep);
-      RemoveParent(handleClass, obj, objContext, depTuple);
+      RemoveParent(obj, objContext, depTuple);
     }
   }
 }
